@@ -1,0 +1,13 @@
+droidcat -in F-Droid.apk,GCamBrasil.apk -mode-by-name="DECODE" -decode-settings="res=yes, dex=no"
+
+droidcat -in F-Droid.apk,LineageOS-2020-miatoll.zip -select-by-name="Lineage" -script="extract.dsc" -output-dir=%CONF_OUTPUT_DIR
+
+droidcat -in F-Droid.apk -structure-model="APKTOOL" -script=decode.dsc -output="fdroid" -max-thread=6 -max-host-memory=2Mb
+
+droidcat -in F-Droid.apk -structure-model="APKTOOL" -script=decode.dsc -output-in-memory -max-thread=6 -max-host-memory=22Mb -perform-operation="%copy% some_file.txt $output:lib/$arch:x86/"
+
+droidcat -in F-Droid.apk -m 1 -use-engine="spyware-aaa" -display-file-info -display-api-name -display-package-name -display-required-permissions -test-for-antifeatures
+
+droidcat -display-required-permissions F-Droid.apk
+
+droidcat -script="extract.dsc" -execute="echo Everything is OK!" -progress-mode="simple" F-Droid.apk
