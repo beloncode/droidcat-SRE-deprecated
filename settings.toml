@@ -1,0 +1,14 @@
+[log]
+filename="droidcat.log"
+[droidcat]
+max_thread=2
+use_max_cpu=true
+
+[input]
+default_input="F-Droid.apk"
+
+[output]
+unknown_output=["app-out", "out", "package"]
+
+[plugins]
+[modules]
