@@ -123,9 +123,10 @@ int main(int main_argc, char** main_argv)
         const option_entry_t* entry = cursor_opt.cur_entry;
         if (entry == NULL) {
             /* This option doesn't exist or is wrong and maybe be reported to the user */
-        } else {
-            OPTION_COMPARE_AND_CALL(_OPTION_LONG_HELP_, entry, help_option_re, droidcat_options);
+            continue;
         }
+
+        OPTION_COMPARE_AND_CALL(_OPTION_LONG_HELP_, entry, help_option_re, droidcat_options);
     }
 
     (void)droidcat_options;
