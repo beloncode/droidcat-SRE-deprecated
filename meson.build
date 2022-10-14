@@ -1,13 +1,12 @@
 project('droidcat', ['c'], version: '000a0')
-root_src = files('main_thread.c')
+root_src = files('Main_Thread_64.c')
 compiler_args = [
-    '-std=c11', 
+    '-std=c++11', 
     '-fstack-protector', 
     '-O2', 
     '-ffast-math', 
     '-Wall', 
     '-Werror',
-    '-Wno-error=stringop-truncation'
 ]
-executable(meson.project_name(), sources: [root_src], c_args: compiler_args)
+executable(meson.project_name(), sources: [root_src], cpp_args: compiler_args)
 
