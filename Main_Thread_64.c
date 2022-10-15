@@ -24,7 +24,7 @@
 
 #endif
 
-static const char g_version[] = "v000a0";
+const char* g_version = "v000a0";
 
 typedef enum medusa_type 
 {
@@ -148,7 +148,7 @@ int string_sanitize_wout(const char* destination_str, const char** wout_string)
     return wout_position;
 }
 
-#define _DROIDCAT_DEBUG_MODE_ 0
+#define _DROIDCAT_DEBUG_MODE_ 1
 
 static const medusa_conf_t medusa_default_conf = {
 
@@ -156,7 +156,7 @@ static const medusa_conf_t medusa_default_conf = {
     
     #define _MEDUSA_DEFAULT_LEVEL_ 0xff
     
-    .displayable_level = _MEDUSA_DEFAULT_LEVEL_
+    .displayable_level = _MEDUSA_DEFAULT_LEVEL_,
 
     #else
     
@@ -325,15 +325,23 @@ void medusa_raise_event(medusa_type_e current_level, const struct medusa_message
     droidcat_ctx->droidcat_event(_MEDUSA_EVENT_STR_, (int)current_level, (void*)message);
 }
 
-static int64_t medusa_fprintf(FILE* output_file, droidcat_ctx_t *droidcat_ctx, const char* fmt, ...);
+static int64_t medusa_fprintf(FILE* output_file, droidcat_ctx_t *droidcat_ctx, const char* fmt, ...)
+    __attribute__((format(__printf__, 3, 4)));
 
 static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const char* fmt, va_list va)
 {
-    #define _STACK_FORMAT_BUFFER_SZ_ 0x5f
+    /* Duplicating the variable argument list for ensure that the original information will not be modified */
+    va_list copy;
+    
+    va_copy(copy, va);
+
+    const int64_t needed_size = vsnprintf(NULL, 0, fmt, copy);
+    
+    va_end(copy);
+
+    #define _STACK_FORMAT_BUFFER_SZ_ 0x6f
 
     char local_format[_STACK_FORMAT_BUFFER_SZ_];
-
-    const int64_t needed_size = vsnprintf(NULL, 0, fmt, va);
 
     medusa_ctx_t* medusa_ctx = NULL;
 
@@ -347,10 +355,10 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
     }
 
     generate:
-    
+
     if (needed_size > sizeof(local_format))
     {
-        medusa_fprintf(stderr, droidcat_ctx, "Format message will be truncated in %d bytes", needed_size);
+        medusa_fprintf(stderr, droidcat_ctx, "Format message will be truncated in %ld bytes\n", needed_size);
     }
 
     vsnprintf(local_format, sizeof(local_format), fmt, va);
@@ -380,7 +388,7 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
 static int64_t medusa_fprintf(FILE* output_file, droidcat_ctx_t *droidcat_ctx, 
     const char* fmt, ...)
 {
-    va_list format;
+    va_list format; 
 
     va_start(format, fmt);
 
@@ -392,6 +400,9 @@ static int64_t medusa_fprintf(FILE* output_file, droidcat_ctx_t *droidcat_ctx,
 
     return medusa_ret;
 }
+
+static int64_t medusa_printf(droidcat_ctx_t *droidcat_ctx, 
+    const char* fmt, ...) __attribute__((format(__printf__, 2, 3)));
 
 static int64_t medusa_printf(droidcat_ctx_t *droidcat_ctx, 
     const char* fmt, ...)
@@ -595,7 +606,7 @@ static int64_t string_populate(char* output_buffer, size_t output_size,
 int64_t string_strip_with_format_array(char** format_string_array, size_t format_array_size, 
     size_t max_array_item_size, const char* output_format)
 {
-    return 0;
+    return 1;
 }
 
 static int64_t medusa_produce(struct medusa_produce_collect* produce_collect,
@@ -839,7 +850,7 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
                 char* lagger_buffer = realloc(ptr, new_size);\
                 if (lagger_buffer == NULL)\
                 {\
-                    medusa_fprintf(stderr, droidcat_ctx, "Can't reallocate %#lx "\
+                    medusa_fprintf(stderr, droidcat_ctx, "Can't reallocate %#x "\
                         "for format buffer\n", new_size);\
                     goto produce;\
                 }\
@@ -895,41 +906,41 @@ int64_t __attribute__((weak, alias("medusa_do"))) medusa_go();
     {\
         const medusa_sourcetrace_t source_trace = {\
             .source_filename = __FILE__,\
-            .source_line = __line__\
+            .source_line = __LINE__\
         };\
-        medusa_go(level, &source_trace, NULL, droidcat, format, __VA_ARGS__);\
+        medusa_go(level, &source_trace, NULL, droidcat, format, ##__VA_ARGS__);\
     }\
     while (0)
 
 #define medusa_info(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_INFO, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_INFO, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_warning(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_WARNING, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_WARNING, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_bug(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_BUG, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_BUG, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_info(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_INFO, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_INFO, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_dev(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_DEV, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_DEV, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_advice(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_ADVICE, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_ADVICE, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_success(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_SUCCESS, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_SUCCESS, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_assert(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_ASSERT, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_ASSERT, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_fatal(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_FATAL, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_FATAL, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_error(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_ERROR, droidcat_ctx, format, __VA_ARGS__)
+    medusa_make(MEDUSA_LOG_ERROR, droidcat_ctx, format, ##__VA_ARGS__)
 
 int16_t droidcat_init(droidcat_ctx_t* droidcat_ctx)
 {
@@ -937,7 +948,7 @@ int16_t droidcat_init(droidcat_ctx_t* droidcat_ctx)
     
     droidcat_ctx->medusa_log_ctx = (medusa_ctx_t*)calloc(1, sizeof(medusa_ctx_t));
 
-    return 0;
+    return 1;
 }
 
 int16_t droidcat_destroy(droidcat_ctx_t* droidcat_ctx) 
@@ -946,7 +957,7 @@ int16_t droidcat_destroy(droidcat_ctx_t* droidcat_ctx)
     
     free((void*)droidcat_ctx->medusa_log_ctx);
     
-    return 0;
+    return 1;
 }
 
 void* main_event_log(const char* event_string, int32_t event_code, const void* event_ptr)
@@ -954,8 +965,28 @@ void* main_event_log(const char* event_string, int32_t event_code, const void* e
     return NULL;
 }
 
+int32_t medusa_start(medusa_ctx_t* medusa_ctx)
+{
+    pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
 
-int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
+    medusa_ctx->medusa_is_running = true;
+
+    pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
+
+    return 1;
+}
+int32_t medusa_stop(medusa_ctx_t* medusa_ctx)
+{
+    pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
+
+    medusa_ctx->medusa_is_running = false;
+
+    pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
+    
+    return 1;
+}
+
+int32_t medusa_activate(const medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
 {
     assert(medusa_ctx->medusa_is_running == false);
 
@@ -965,6 +996,7 @@ int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
     }
     else
     {
+        medusa_conf = &medusa_default_conf;
         memcpy(&medusa_ctx->medusa_config, &medusa_default_conf, sizeof(medusa_default_conf));
     }
 
@@ -974,9 +1006,9 @@ int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
     
     pthread_mutex_init(&medusa_ctx->medusa_central_mutex, NULL);
 
-    medusa_ctx->medusa_is_running = true;
+    medusa_start(medusa_ctx);
 
-    return 0;
+    return 1;
 }
 
 /* The thread/method thats wait for medusa will acquire his lock */
@@ -986,16 +1018,16 @@ int32_t medusa_wait(int time_out, medusa_ctx_t* medusa_ctx)
 
     pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
 
-    return 0;
+    return 1;
 }
 
 int32_t medusa_deactivate(medusa_ctx_t* medusa_ctx)
 {
     #define _MEDUSA_WAIT_TIME_OUT_ 100
+
+    medusa_stop(medusa_ctx);
     
     medusa_wait(_MEDUSA_WAIT_TIME_OUT_, medusa_ctx);
-
-    medusa_ctx->medusa_is_running = false;
 
     free((void*)medusa_ctx->medusa_format);
 
@@ -1028,12 +1060,12 @@ int32_t droidcat_session_stop(droidcat_ctx_t* droidcat_ctx)
 
     medusa_deactivate(medusa_ctx);
 
-    return 0;
+    return 1;
 }
 
 int main()
 {
-    medusa_printf(NULL, "Droidcat Welcome!\n");
+    medusa_printf(NULL, "Droidcat %s Welcome!\n", g_version);
 
     droidcat_ctx_t* main_droidcat = (droidcat_ctx_t*)calloc(1, sizeof(droidcat_ctx_t));
 
@@ -1056,8 +1088,10 @@ int main()
     const rlim_t max_stack = local_limits.rlim_cur;
     
     medusa_fprintf(stderr, main_droidcat, "[*] droidcat %s has started with 1 actual real thread (%lu) "
-            "and %#lx of maximum stack size\n", g_version, pthread_self(), max_stack);
-        
+        "and %#lx of maximum stack size\n", g_version, pthread_self(), max_stack);
+
+    medusa_info(main_droidcat, "Logging stage has been completed\n");
+
     droidcat_session_stop(main_droidcat);
 
     droidcat_destroy(main_droidcat);
