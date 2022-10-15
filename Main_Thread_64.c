@@ -67,7 +67,59 @@ typedef struct medusa_conf
     */
     bool adjust_buffers_size;
 
+    const char* message_format;
+
+    bool use_format;
+
+    const char* program_name;
+
+    bool display_program_name;
+
+    bool display_status;
+
+    #if defined(_WIN64)
+
+    #else defined(__unix__)
+
+    int default_output_fd;
+
+    #endif
+
+    bool display_to_default_output;
+
 } medusa_conf_t;
+
+char* string_generate_format(char* dest_output, const char* to_format)
+{
+    while (*to_format != '\0')
+    {
+        if (isalpha(*to_format))
+        {
+            if (!isalpha(*to_format))
+                dest_output++ = '%c';
+            else
+                dest_output++ = '%s';
+            while (isalpha(to_format)) to_format++;
+        }
+
+        dest_output++ = *to_format; 
+
+    }
+    
+    return dest_output;
+}
+
+int string_sanitize_wout(const char* destination_str, const char** wout_string)
+{
+    int wout_position;
+    
+    for (wout_position = 0; wout_string[wout_position] != NULL, wout_position++)
+    {
+        if (strstr(destination_str, wout_string) != NULL) break;
+    }
+
+    return wout_position;
+}
 
 #define _DROIDCAT_DEBUG_MODE_ 0
 
@@ -91,7 +143,11 @@ static const medusa_conf_t medusa_default_conf = {
 
     .output_buffer_sz = 0x11f,
 
-    .adjust_buffers_size = true
+    .adjust_buffers_size = true,
+
+    .default_output_fd = fileno(stdout),
+
+    .display_to_default_output = true,
 };
 
 typedef struct medusa_sourcetrace
@@ -115,6 +171,10 @@ struct medusa_produce_info
     struct medusa_thread_context* message_thread_context;
 
     medusa_sourcetrace_t message_source;
+
+    const char* status_string;
+
+    const char* color_string;
 };
 
 struct medusa_produce_collect
@@ -143,6 +203,14 @@ typedef struct medusa_ctx
 
     bool medusa_is_running;
 
+    #define _FORMAT_BUFFER_SZ_
+
+    char* medusa_format;
+    
+    #define _OUTPUT_BUFFER_SZ_ _FORMAT_BUFFER_SZ_ * 2
+
+    char* medusa_output;
+
 } medusa_ctx_t;
 
 typedef enum medusa_message_cond {
@@ -155,10 +223,19 @@ typedef enum medusa_message_cond {
 
 } medusa_message_cond_e;
 
-struct medusa_message_bucket
+typedef struct
 {
     medusa_message_cond_e message_condition;
 
+    _Atomic int_least8_t condition_value;
+
+    struct timespec condition_time;
+
+} medusa_cond_t;
+
+struct medusa_message_bucket
+{
+    medusa_cond_t message_condition;
     struct medusa_produce_info* message_info;    
 };
 
@@ -187,7 +264,9 @@ typedef void* (*droidcat_event_t)(const char* event_string, int32_t event_code, 
 typedef struct droidcat_ctx 
 {
     const char* install_dir;
+    
     hardtree_ctx_t* working_dir_ctx;
+
     medusa_ctx_t* medusa_log_ctx;
 
     droidcat_event_t droidcat_event;
@@ -202,7 +281,7 @@ void medusa_raise_event(medusa_type_e current_level, const struct medusa_message
     #define _MEDUSA_EVENT_STR_ "Medusa Event"
 
     assert(droidcat_ctx != NULL);
-        
+    
     droidcat_ctx->droidcat_event(_MEDUSA_EVENT_STR_, (int)current_level, (void*)message);
 }
 
@@ -243,7 +322,6 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
     };
 
     struct medusa_message_bucket current_bucket = {
-        .message_condition = MESSAGE_COND_WOUT,
         .message_info = &local_produce
     };
 
@@ -282,8 +360,339 @@ static int64_t medusa_printf(droidcat_ctx_t *droidcat_ctx,
     return medusa_ret;
 }
 
+typedef bool (*string_expand_t)(const char* item_format, char** write_output, void* user_data);
+
+struct medusa_generate_info
+{
+    medusa_conf_t* gen_conf;
+
+    struct medusa_produce_info* gen_info;
+
+    struct medusa_thread_context* gen_context;
+
+};
+
+static bool medusa_generate(const char* item_format, char** write_output, void* user_data)
+{
+    struct medusa_generate_info* generate_info = (struct medusa_generate_info*)user_data;
+
+    medusa_conf_t* medusa_conf = generate_info->gen_conf;
+    
+    struct medusa_produce_info* produce_info = generate_info->gen_info;
+
+    struct medusa_thread_context* produce_context = generate_info->gen_context;
+
+    #define MIN_STRLEN(x, y)\
+    do\
+    {\
+        int64_t __x_len = strlen(x);\
+        int64_t __y_len = strlen(y);\
+        if (__x_len > __y_len)\
+            return __y_len;\
+        return __x_len;\
+    }\
+    while(0)
+
+    #define CHECK_STR_IS(str, compare_with)\
+        if (strncmp(str, compare_with, MIN_STRLEN(str, compare_with)) == 0)
+
+    #define _FORMAT_MESSAGE_STR_ "FORMAT_MESSAGE"
+
+    CHECK_STR_IS(item_format, _FORMAT_MESSAGE_STR_)
+    {
+        *write_output = generate_info->info_format_buffer;
+
+        goto generate_ok;
+    }
+
+    #define _STATUS_STR_ "STATUS"
+
+    CHECK_STR_IS(item_format, _STATUS_STR_)
+    {
+        if (medusa_conf->display_status == false) goto generate_err;
+
+        *write_output = produce_info->status_string;
+
+        goto generate_ok;
+    }
+
+    #define _TIME_STR_ "TIME"
+
+    CHECK_STR_IS(item_format, _TIME_STR_)
+    {
+        *write_output = NULL;
+
+        goto generate_err;
+    }
+
+    #define BACKTRACE_STR_ "BACKTRACE"
+
+    CHECK_STR_IS(item_format, BACKTRACE_STR_)
+    {
+        *write_output = NULL;
+
+        goto generate_err;
+    }
+
+    #define _SOURCE_TRACE_STR_ "SOURCETRACE"
+
+    CHECK_STR_IS(item_format, _SOURCE_TRACE_STR_)
+    {
+        *write_output = NULL;
+
+        goto generate_err;
+    }
+
+    #define _CONTEXT_STR_ "CONTEXT"
+
+    CHECK_STR_IS(item_format, _CONTEXT_STR_)
+    {
+        *write_output = NULL;
+
+        goto generate_err;
+    }
+
+    #define _PROGRAM_NAME_STR_ "PROGRAM_NAME"
+
+    CHECK_STR_IS(item_format, _PROGRAM_NAME_STR_)
+    {
+        if (medusa_config->display_program_name == false) goto generate_err;
+        
+        *write_output = medusa_config->program_name;
+        
+        goto generate_ok;
+    }
+
+    generate_ok:
+
+    return true;
+
+    generate_err:
+    
+    return false;
+}
+
+int32_t string_expand_format(char** format_values, size_t format_capacity, 
+    const char** format_ctx_array, string_expand_t expand_call, void* user_data)
+{    
+    uintptr_t format_values_index = 0;
+
+    #define PUSH_FORMAT_VALUE(value)\
+        if (!(format_values_index >= format_capacity))\
+            (format_values[format_values_index++] = value)
+
+    char* format_value;
+
+    for (format_value = *format_values; format_values != NULL; format_values++)
+    {
+        char* result_value = NULL;
+        // (const char* item_format, char** write_output, void* user_data)
+        const bool result_format = expand_call(format_value, &result_value, user_data);
+
+        if (result_format == false)
+            result_value = "(null)";
+
+        PUSH_FORMAT_VALUE(result_format);        
+    }
+
+    return format_values_index;
+}
+
+static int64_t string_entries_count(char** string_array)
+{
+    int64_t actual_capacity;
+
+    for (actual_capacity = 0; *string_array++ != NULL; actual_capacity++) ;
+
+    return actual_capacity;
+}
+
+static char* string_populate(char* output_buffer, size_t output_size,
+    string_format, format_values)
+{
+    return output_buffer;
+}
+
+
+static int64_t medusa_produce(struct medusa_produce_collect* produce_collect,
+    medusa_ctx_t* medusa_ctx)
+{
+    const medusa_type_e message_type = produce_collect->collect_level;
+
+    medusa_conf_t* medusa_conf = medusa_ctx->medusa_config;
+
+    struct medusa_produce_info* produce_info = produce_collect->collect_info;
+
+    struct medusa_thread_context* produce_context = produce_info->message_thread_context;
+
+    char* output_buffer = produce_info->info_format_buffer;
+
+    assert(output_buffer != NULL);
+
+    const char* message_str = NULL;
+    const char* color_scheme = NULL;
+
+    switch (message_type)
+    {
+    case MEDUSA_LOG_INFO: message_str = "Info"; color_scheme = ""; break;
+    
+    case MEDUSA_LOG_WARNING: message_str = "Warning"; color_scheme = ""; break;
+    
+    case MEDUSA_LOG_BUG: message_str = "Bug"; color_scheme = ""; break;
+    
+    case MEDUSA_LOG_DEV: message_str = "Dev"; color_scheme = ""; break;
+    
+    case MEDUSA_LOG_ADVICE: message_str = "Advice"; color_scheme = ""; break;
+    
+    case MEDUSA_LOG_SUCCESS: message_str = "Success"; color_scheme = ""; break;
+    
+    case MEDUSA_LOG_ASSERT: message_str = "Assert"; color_scheme = ""; break;
+    
+    case MEDUSA_LOG_FATAL: message_str = "Fatal"; color_scheme = ""; break;
+    
+    default: case MEDUSA_LOG_ERROR: message_str = "Error"; color_scheme = ""; break;
+    }
+
+    produce_info->status_string = message_str;
+
+    produce_info->color_string = color_scheme;
+
+    static const char* default_message_format = "(PROGRAM_NAME:CONTEXT).[SOURCETRACE:BACKTRACE]\tTIME:STATUS -> FORMAT_MESSAGE";
+
+    const char* format_in_use = NULL;
+
+    if (medusa_conf->use_format)
+    {
+        format_in_use = medusa_conf->message_format;
+    }
+    else
+    {
+        format_in_use = default_message_format;    
+    }
+
+    uintptr_t actual_cursor = 0;
+
+    #define INC_CURSOR(inc)\
+        (actual_cursor += inc)
+    
+    #define INC_LOCATION\
+        (output_buffer + actual_cursor)
+    
+    #define REMAIN_SIZE\
+        (produce_collect->collect_output_sz - actual_cursor)
+    
+    #define WRITE_BUFFER(fmt, ...)\
+        INC_CURSOR(snprintf(INC_LOCATION, REMAIN_SIZE, fmt, __VA_ARGS__))
+
+    WRITE_BUFFER("?");
+
+    #define _OUTPUT_FINAL_FORMAT_ 0x6f
+
+    char output_format[_OUTPUT_FINAL_FORMAT_];
+
+    string_generate_format(output_format, format_in_use);
+
+    static const char* invalid_formats[] = {
+        "%d", "%u", "%ld", "%lu", "%x", "%c", NULL
+    };
+    if (string_sanitize_wout(output_format, invalid_formats) == false) {}
+
+    #define _OUTPUT_FINAL_MAX_SEQUENCE_ 10
+
+    char format_ctx_string[_OUTPUT_FINAL_MAX_SEQUENCE_ + 1][_OUTPUT_FINAL_FORMAT_ / 2];
+
+    format_ctx_string[_OUTPUT_FINAL_MAX_SEQUENCE_] = NULL;
+
+    string_strip_with_format_array(format_ctx_string, sizeof(format_ctx_string), _OUTPUT_FINAL_MAX_SEQUENCE_,
+        output_format);
+
+    char format_values[_OUTPUT_FINAL_MAX_SEQUENCE_];
+
+    struct medusa_generate_info generate_info = {
+        
+        .gen_conf = medusa_conf,
+        .gen_produce = produce_info,
+        .gen_context = produce_context
+
+    };
+
+    const int32_t expand_result = string_expand_format(format_values, _OUTPUT_FINAL_MAX_SEQUENCE_ - 1, format_ctx_string, medusa_generate, &generate_info);
+
+    int64_t populate_ret = string_populate(output_buffer, produce_collect->collect_output_sz output_format, format_values);
+
+    assert(string_entries_count(format_values) == expand_result);
+
+    return populate_ret;
+}
+
+int medusa_send(struct medusa_message_bucket* message_bucket, medusa_ctx_t* medusa_ctx)
+{
+    struct medusa_produce_info* info = message_bucket->message_info; 
+
+    medusa_cond_t* condition = message_bucket->message_condition;
+
+    int send_ret = 0;
+
+    if (condition->message_condition != MESSAGE_COND_WOUT)
+    {
+        assert(info->output_is_allocated);
+        assert(info->info_output_buffer != medusa_ctx->output_buffer);
+
+    }
+
+    if (medusa_ctx != NULL)
+    {
+        medusa_conf_t* conf = &medusa_ctx->medusa_conf;
+
+        if (conf->display_to_default_output)
+        {
+            #if defined(_WIN64)
+
+            #elif defined(__unix__)
+
+            send_ret = (int)write(conf->default_output_fd, info->info_output_buffer, strlen(info->info_output_buffer));
+
+            #endif
+        }
+    }
+
+    if (info->info_output_buffer != medusa_ctx->output_buffer)
+    {
+        assert(info->info_format_buffer != medusa_ctx->format_buffer);
+
+        free((void*)info->info_output_buffer);
+
+        free((void*)info->info_format_buffer);
+
+    }
+
+    return send_ret;
+}
+
+int medusa_dispatch_message(struct medusa_message_bucket* message_bucket, medusa_ctx_t* medusa_ctx)
+{
+    medusa_cond_t condition = message_bucket->message_condition;
+
+    struct medusa_produce_info* info = message_bucket->message_info; 
+
+    if (condition->message_condition != MESSAGE_COND_WOUT)
+    {
+        assert(medusa_ctx != NULL);
+
+        pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
+
+        pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
+    }
+    else
+    {
+        medusa_send(message_bucket, medusa_ctx);
+    }
+
+    return 1;
+}
+
 static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* current_source, 
-    droidcat_ctx_t* droidcat_ctx, const char* fmt, ...) 
+    medusa_cond_t* current_cond, droidcat_ctx_t* droidcat_ctx, const char* fmt, ...) 
 {
     va_list va_format;
 
@@ -292,74 +701,60 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
     medusa_ctx_t* medusa_ctx = NULL;
     
     medusa_conf_t* medusa_conf = NULL;
-    
-    if (droidcat_ctx != NULL) {
-        
+
+    char medusa_format[_STACK_FORMAT_BUFFER_SZ_];
+
+    char stack_output[_STACK_OUTPUT_BUFFER_SZ_];
+
+    char* format_use = medusa_format;
+
+    char* output_use = stack_output;
+
+    if (droidcat_ctx != NULL) 
+    {
         medusa_ctx = droidcat_ctx->medusa_log_ctx;
         
         medusa_conf = &medusa_ctx->medusa_config;
-    }
 
-    if (medusa_conf != NULL)
-    {
-        if (medusa_should_log(level_id, medusa_ctx) == false)
-        {
-            return -1;
-        }
+        format_use = medusa->medusa_format;
+
+        output_use = medusa->medusa_output;
     }
 
     struct medusa_produce_info produce_result;
 
-    struct medusa_produce_collect stack_produce = {
+    struct medusa_produce_collect local_produce = {
         
         .collect_info = &produce_result,
 
         .collect_level = level_id
-    };
-    
-    char stack_format[_STACK_FORMAT_BUFFER_SZ_];
+    }; 
 
-    #define _STACK_OUTPUT_BUFFER_SZ_ _STACK_FORMAT_BUFFER_SZ_ * 2
+    if (medusa_ctx != NULL)
+    {
+        local_produce.info_format_buffer = format_use;
+        local_produce.info_output_buffer = output_use;
 
-    char stack_output[_STACK_OUTPUT_BUFFER_SZ_];
+        if (medusa_should_log(level_id, medusa_ctx) == false)
+        {
+            return -1;
+        }
 
-    produce_result.info_output_buffer = stack_output;
+        local_produce.collect_format_sz = medusa_conf->format_buffer_sz;
+        local_produce.collect_output_sz = medusa_conf->format_output_sz;
+    }
+    else
+    {
+        local_produce.info_format_buffer = stack_format;
+        local_produce.info_output_buffer = stack_output;
+
+        local_produce.collect_format_sz = sizeof(stack_format);
+        local_produce.collect_output_sz = sizeof(stack_output);
+    }
 
     memcpy(&produce_result.message_source, current_source, sizeof(*current_source));
-    
-    stack_produce.collect_output_sz = sizeof(stack_output);
-
-    produce_result.info_format_buffer = stack_format;
-
-    stack_produce.collect_format_sz = sizeof(stack_format);
 
     const int needed_fmt_size = vsprintf(NULL, fmt, va_format);
-
-    if (medusa_conf != NULL)
-    {
-        if (sizeof(stack_format) < medusa_conf->format_buffer_sz)
-        {
-            char* format_buffer = (char*)calloc(sizeof(char), medusa_conf->format_buffer_sz);
-
-            produce_result.info_format_buffer = format_buffer;
-
-            produce_result.format_is_allocated = true;
-
-            stack_produce.collect_format_sz = medusa_conf->format_buffer_sz;
-        }
-        
-        if (sizeof (stack_format) < medusa_conf->format_buffer_sz)
-        {
-            char* output_buffer = (char*)calloc(sizeof(char), medusa_conf->output_buffer_sz);
-
-            produce_result.info_output_buffer = output_buffer;
-
-            produce_result.output_is_allocated = true;
-
-            stack_produce.collect_output_sz = medusa_conf->output_buffer_sz;
-        }
-        
-    }
 
     if (needed_fmt_size > stack_produce.collect_format_sz)
     {
@@ -372,7 +767,7 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
 
         if (produce_result.format_is_allocated == false) goto produce;
 
-        #define MEDUSA_PRODUCE_REALLOC_BUFFER(ptr, new_size)\
+        #define MEDUSA_PRODUCE_REALLOC(ptr, new_size)\
             do\
             {\
                 char* lagger_buffer = realloc(ptr, new_size);\
@@ -386,7 +781,7 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
             }\
             while (0)\
         
-        MEDUSA_PRODUCE_REALLOC_BUFFER(produce_result.info_format_buffer, needed_fmt_size);
+        MEDUSA_PRODUCE_REALLOC(produce_result.info_format_buffer, needed_fmt_size);
 
         stack_produce.collect_format_sz = needed_fmt_size;
 
@@ -394,12 +789,13 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
 
         const int new_output_size = needed_fmt_size * _GROWABLE_PERCENTAGE_;
 
-        MEDUSA_PRODUCE_REALLOC_BUFFER(produce_result.info_output_buffer, new_output_size);
+        MEDUSA_PRODUCE_REALLOC(produce_result.info_output_buffer, new_output_size);
 
         stack_produce.collect_output_sz = new_output_size;
     }
 
     produce:
+
     vsnprintf(produce_result.info_format_buffer, stack_produce.collect_format_sz, fmt, va_format);
 
     produce_result.message_thread_context = medusa_current_context(medusa_ctx);
@@ -407,11 +803,17 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
     const int64_t medusa_ret = medusa_produce(&stack_produce, medusa_ctx);
 
     struct medusa_message_bucket stack_bucket = {
-        
-        .message_condition = MESSAGE_COND_WOUT,
-        
+
         .message_info = &produce_result
+    
     };
+
+    if (current_cond != NULL)
+    {
+        assert(medusa_ctx != NULL);
+
+        memcpy(&stack_bucket.message_condition, stack_bucket, sizeof(*stack_bucket));
+    }
 
     medusa_raise_event(level_id, &stack_bucket, droidcat_ctx);
 
@@ -420,7 +822,6 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
     va_end(va_format);
 
     return medusa_ok == 0 ? -1 : medusa_ret;
-
 }
 
 int64_t __attribute__((weak, alias("medusa_do"))) medusa_go();
@@ -432,7 +833,7 @@ int64_t __attribute__((weak, alias("medusa_do"))) medusa_go();
             .source_filename = __FILE__,\
             .source_line = __line__\
         };\
-        medusa_go(level, &source_trace, droidcat, format, __VA_ARGS__);\
+        medusa_go(level, &source_trace, NULL, droidcat, format, __VA_ARGS__);\
     }\
     while (0)
 
@@ -469,14 +870,18 @@ int64_t __attribute__((weak, alias("medusa_do"))) medusa_go();
 int16_t droidcat_init(droidcat_ctx_t* droidcat_ctx)
 {
     droidcat_ctx->working_dir_ctx = (hardtree_ctx_t*)calloc(1, sizeof(hardtree_ctx_t));
+    
     droidcat_ctx->medusa_log_ctx = (medusa_ctx_t*)calloc(1, sizeof(medusa_ctx_t));
+
     return 0;
 }
 
 int16_t droidcat_destroy(droidcat_ctx_t* droidcat_ctx) 
 {
     free((void*)droidcat_ctx->working_dir_ctx);
+    
     free((void*)droidcat_ctx->medusa_log_ctx);
+    
     return 0;
 }
 
@@ -490,7 +895,7 @@ int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
 {
     assert(medusa_ctx->medusa_is_running == false);
 
-    if (medusa_conf != NULL)
+    if (medusa_conf == NULL)
     {
         memcpy(&medusa_ctx->medusa_config, medusa_conf, sizeof(*medusa_conf));
     }
@@ -499,6 +904,10 @@ int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
         memcpy(&medusa_ctx->medusa_config, &medusa_default_conf, sizeof(medusa_default_conf));
     }
 
+    medusa_conf->medusa_format = (char*)calloc(sizeof(char), medusa_conf->format_buffer_sz);
+
+    medusa_conf->medusa_output = (char*)calloc(sizeof(char), medusa_conf->output_buffer_sz);
+    
     pthread_mutex_init(&medusa_ctx->medusa_central_mutex, NULL);
 
     medusa_ctx->medusa_is_running = true;
@@ -523,6 +932,10 @@ int32_t medusa_deactivate(medusa_ctx_t* medusa_ctx)
     medusa_wait(_MEDUSA_WAIT_TIME_OUT_, medusa_ctx);
 
     medusa_ctx->medusa_is_running = false;
+
+    free((void*)medusa_conf->medusa_format);
+
+    free((void*)medusa_conf->medusa_output);
 
     pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
 
