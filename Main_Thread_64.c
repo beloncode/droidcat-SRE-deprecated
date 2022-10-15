@@ -41,9 +41,7 @@ typedef enum medusa_type
     MEDUSA_LOG_SUCCESS, 
     
     MEDUSA_LOG_ASSERT, 
-    
-    MEDUSA_LOG_FATAL, 
-    
+        
     MEDUSA_LOG_ERROR 
 
 } medusa_type_e;
@@ -63,8 +61,6 @@ typedef struct medusa_level
     unsigned success_level: 1;
     
     unsigned assert_level: 1;
-
-    unsigned fatal_level: 1;
     
     unsigned error_level: 1;
 
@@ -287,7 +283,7 @@ bool medusa_should_log(const medusa_type_e id, medusa_ctx_t* medusa_ctx)
 
     const uint8_t* medusa_level = (uint8_t*)&medusa_config->displayable_level;
 
-    bool should_be = *medusa_level & (uint8_t)id;
+    bool should_be = *medusa_level >> id & (uint8_t)id;
 
     pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
 
@@ -642,9 +638,7 @@ static int64_t medusa_produce(struct medusa_produce_collect* produce_collect,
     case MEDUSA_LOG_SUCCESS: message_str = "Success"; color_scheme = ""; break;
     
     case MEDUSA_LOG_ASSERT: message_str = "Assert"; color_scheme = ""; break;
-    
-    case MEDUSA_LOG_FATAL: message_str = "Fatal"; color_scheme = ""; break;
-    
+        
     default: case MEDUSA_LOG_ERROR: message_str = "Error"; color_scheme = ""; break;
     }
 
@@ -935,9 +929,6 @@ int64_t __attribute__((weak, alias("medusa_do"))) medusa_go();
 
 #define medusa_assert(droidcat_ctx, format, ...)\
     medusa_make(MEDUSA_LOG_ASSERT, droidcat_ctx, format, ##__VA_ARGS__)
-
-#define medusa_fatal(droidcat_ctx, format, ...)\
-    medusa_make(MEDUSA_LOG_FATAL, droidcat_ctx, format, ##__VA_ARGS__)
 
 #define medusa_error(droidcat_ctx, format, ...)\
     medusa_make(MEDUSA_LOG_ERROR, droidcat_ctx, format, ##__VA_ARGS__)
