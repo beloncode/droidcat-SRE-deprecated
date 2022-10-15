@@ -105,25 +105,34 @@ typedef struct medusa_conf
 
     bool display_to_default_output;
 
+    float growable_percentage;
+
 } medusa_conf_t;
 
-char* string_generate_format(char* dest_output, const char* to_format)
+char* string_generate_format(char* dest_output, size_t dest_size,
+    const char* to_format)
 {
     while (*to_format != '\0')
     {
         if (isalpha(*to_format))
         {
             if (!isalpha(*to_format))
-                dest_output++ = '%c';
+            {
+                strncpy(dest_output, "%c", dest_size);
+                dest_output += 2;
+            }
             else
-                dest_output++ = '%s';
-            while (isalpha(to_format)) to_format++;
+            {
+                strncpy(dest_output, "%s", dest_size);
+                dest_output += 2;
+            }
+            while (isalpha(*to_format)) to_format++;
         }
 
-        dest_output++ = *to_format; 
+        *dest_output++ = *to_format; 
 
     }
-    
+
     return dest_output;
 }
 
@@ -131,9 +140,9 @@ int string_sanitize_wout(const char* destination_str, const char** wout_string)
 {
     int wout_position;
     
-    for (wout_position = 0; wout_string[wout_position] != NULL, wout_position++)
+    for (wout_position = 0; wout_string[wout_position] != NULL; wout_position++)
     {
-        if (strstr(destination_str, wout_string) != NULL) break;
+        if (strstr(destination_str, wout_string[wout_position]) != NULL) break;
     }
 
     return wout_position;
@@ -163,9 +172,17 @@ static const medusa_conf_t medusa_default_conf = {
 
     .adjust_buffers_size = true,
 
-    .default_output_fd = fileno(stdout),
+    #if defined(__unix__)
+
+    .default_output_fd = 0,
+
+    #endif
 
     .display_to_default_output = true,
+
+    #define _GROWABLE_PERCENTAGE_ 1.65 
+
+    .growable_percentage = _GROWABLE_PERCENTAGE_
 };
 
 typedef struct medusa_sourcetrace
@@ -257,6 +274,11 @@ struct medusa_message_bucket
     struct medusa_produce_info* message_info;    
 };
 
+struct medusa_thread_context* medusa_current_context(medusa_ctx_t* medusa_ctx)
+{
+    return NULL;
+}
+
 bool medusa_should_log(const medusa_type_e id, medusa_ctx_t* medusa_ctx)
 {
     pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
@@ -335,7 +357,7 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
 
     struct medusa_produce_info local_produce = {
         .info_format_buffer = local_format,
-        .message_thread_context = medusa_current_context(medusa_ctx);
+        .message_thread_context = medusa_current_context(medusa_ctx)
 
     };
 
@@ -398,27 +420,16 @@ static bool medusa_generate(const char* item_format, char** write_output, void* 
     
     struct medusa_produce_info* produce_info = generate_info->gen_info;
 
-    struct medusa_thread_context* produce_context = generate_info->gen_context;
-
-    #define MIN_STRLEN(x, y)\
-    do\
-    {\
-        int64_t __x_len = strlen(x);\
-        int64_t __y_len = strlen(y);\
-        if (__x_len > __y_len)\
-            return __y_len;\
-        return __x_len;\
-    }\
-    while(0)
+    /* struct medusa_thread_context* produce_context = generate_info->gen_context; */
 
     #define CHECK_STR_IS(str, compare_with)\
-        if (strncmp(str, compare_with, MIN_STRLEN(str, compare_with)) == 0)
+        if (strncmp(str, compare_with, strlen(str)) == 0)
 
     #define _FORMAT_MESSAGE_STR_ "FORMAT_MESSAGE"
 
     CHECK_STR_IS(item_format, _FORMAT_MESSAGE_STR_)
     {
-        *write_output = generate_info->info_format_buffer;
+        *write_output = produce_info->info_format_buffer;
 
         goto generate_ok;
     }
@@ -429,7 +440,7 @@ static bool medusa_generate(const char* item_format, char** write_output, void* 
     {
         if (medusa_conf->display_status == false) goto generate_err;
 
-        *write_output = produce_info->status_string;
+        *write_output = (char*)produce_info->status_string;
 
         goto generate_ok;
     }
@@ -474,9 +485,9 @@ static bool medusa_generate(const char* item_format, char** write_output, void* 
 
     CHECK_STR_IS(item_format, _PROGRAM_NAME_STR_)
     {
-        if (medusa_config->display_program_name == false) goto generate_err;
+        if (medusa_conf->display_program_name == false) goto generate_err;
         
-        *write_output = medusa_config->program_name;
+        *write_output = (char*)medusa_conf->program_name;
         
         goto generate_ok;
     }
@@ -510,7 +521,7 @@ int32_t string_expand_format(char** format_values, size_t format_capacity,
         if (result_format == false)
             result_value = "(null)";
 
-        PUSH_FORMAT_VALUE(result_format);        
+        PUSH_FORMAT_VALUE(result_value);        
     }
 
     return format_values_index;
@@ -525,19 +536,67 @@ static int64_t string_entries_count(char** string_array)
     return actual_capacity;
 }
 
-static char* string_populate(char* output_buffer, size_t output_size,
-    string_format, format_values)
+static int64_t string_populate(char* output_buffer, size_t output_size,
+    const char* string_format, const char** format_values)
 {
-    return output_buffer;
+    uintptr_t inc_ptr = 0;
+    
+    *output_buffer = '?';
+    *(output_buffer + 1) = '\0'; 
+
+    #define REMAIN_SIZE\
+        (output_size - inc_ptr)
+
+    #define INC_BUFFER(inc_size)\
+        (inc_ptr += inc_size)
+
+    #define NEXT_LOCATION\
+        (strstr(output_buffer, "?"))
+
+    #define EXPAND_BUFFER(fmt, ...)\
+        INC_BUFFER(snprintf(NEXT_LOCATION, REMAIN_SIZE, fmt, ##__VA_ARGS__))
+    
+    #define COPY_BUFFER(str, size)\
+        if (size > REMAIN_SIZE) break;\
+        strncpy(NEXT_LOCATION, str, size);\
+        INC_BUFFER(size)
+
+    char* nested_position = NULL;
+
+    while (*string_format)
+    {
+        if ((nested_position = strchr(string_format, '%')) != NULL) goto Copy;
+
+        break;
+        
+        Copy:
+        
+        COPY_BUFFER(output_buffer, (nested_position - 1) - output_buffer);
+
+        if (*nested_position == 's') goto STRcopy;
+        
+        STRcopy:
+        
+        EXPAND_BUFFER("%s?", *format_values++);
+    }
+
+    #undef EXPAND_BUFFER
+
+    return (int64_t)inc_ptr;
 }
 
+int64_t string_strip_with_format_array(char** format_string_array, size_t format_array_size, 
+    size_t max_array_item_size, const char* output_format)
+{
+    return 0;
+}
 
 static int64_t medusa_produce(struct medusa_produce_collect* produce_collect,
     medusa_ctx_t* medusa_ctx)
 {
     const medusa_type_e message_type = produce_collect->collect_level;
 
-    medusa_conf_t* medusa_conf = medusa_ctx->medusa_config;
+    medusa_conf_t* medusa_conf = &medusa_ctx->medusa_config;
 
     struct medusa_produce_info* produce_info = produce_collect->collect_info;
 
@@ -588,27 +647,11 @@ static int64_t medusa_produce(struct medusa_produce_collect* produce_collect,
         format_in_use = default_message_format;    
     }
 
-    uintptr_t actual_cursor = 0;
-
-    #define INC_CURSOR(inc)\
-        (actual_cursor += inc)
-    
-    #define INC_LOCATION\
-        (output_buffer + actual_cursor)
-    
-    #define REMAIN_SIZE\
-        (produce_collect->collect_output_sz - actual_cursor)
-    
-    #define WRITE_BUFFER(fmt, ...)\
-        INC_CURSOR(snprintf(INC_LOCATION, REMAIN_SIZE, fmt, __VA_ARGS__))
-
-    WRITE_BUFFER("?");
-
     #define _OUTPUT_FINAL_FORMAT_ 0x6f
 
     char output_format[_OUTPUT_FINAL_FORMAT_];
 
-    string_generate_format(output_format, format_in_use);
+    string_generate_format(output_format, sizeof(output_format), format_in_use);
 
     static const char* invalid_formats[] = {
         "%d", "%u", "%ld", "%lu", "%x", "%c", NULL
@@ -619,26 +662,25 @@ static int64_t medusa_produce(struct medusa_produce_collect* produce_collect,
 
     char format_ctx_string[_OUTPUT_FINAL_MAX_SEQUENCE_ + 1][_OUTPUT_FINAL_FORMAT_ / 2];
 
-    format_ctx_string[_OUTPUT_FINAL_MAX_SEQUENCE_] = NULL;
+    char** format_modulator = (char **)format_ctx_string;
 
-    string_strip_with_format_array(format_ctx_string, sizeof(format_ctx_string), _OUTPUT_FINAL_MAX_SEQUENCE_,
-        output_format);
+    format_modulator[_OUTPUT_FINAL_MAX_SEQUENCE_] = NULL;
 
-    char format_values[_OUTPUT_FINAL_MAX_SEQUENCE_];
+    string_strip_with_format_array(format_modulator, sizeof(format_ctx_string)/sizeof(format_ctx_string[0]), _OUTPUT_FINAL_MAX_SEQUENCE_, output_format);
 
     struct medusa_generate_info generate_info = {
         
         .gen_conf = medusa_conf,
-        .gen_produce = produce_info,
+        .gen_info = produce_info,
         .gen_context = produce_context
 
     };
 
-    const int32_t expand_result = string_expand_format(format_values, _OUTPUT_FINAL_MAX_SEQUENCE_ - 1, format_ctx_string, medusa_generate, &generate_info);
+    const int32_t expand_result = string_expand_format(format_modulator, _OUTPUT_FINAL_MAX_SEQUENCE_ - 1, (const char **)format_ctx_string, medusa_generate, &generate_info);
 
-    int64_t populate_ret = string_populate(output_buffer, produce_collect->collect_output_sz output_format, format_values);
+    int64_t populate_ret = string_populate(output_buffer, produce_collect->collect_output_sz, output_format, (const char**)format_modulator);
 
-    assert(string_entries_count(format_values) == expand_result);
+    assert(string_entries_count(format_modulator) == expand_result);
 
     return populate_ret;
 }
@@ -647,20 +689,20 @@ int medusa_send(struct medusa_message_bucket* message_bucket, medusa_ctx_t* medu
 {
     struct medusa_produce_info* info = message_bucket->message_info; 
 
-    medusa_cond_t* condition = message_bucket->message_condition;
+    medusa_cond_t* condition = &message_bucket->message_condition;
 
     int send_ret = 0;
 
     if (condition->message_condition != MESSAGE_COND_WOUT)
     {
         assert(info->output_is_allocated);
-        assert(info->info_output_buffer != medusa_ctx->output_buffer);
+        assert(info->info_output_buffer != medusa_ctx->medusa_output);
 
     }
 
     if (medusa_ctx != NULL)
     {
-        medusa_conf_t* conf = &medusa_ctx->medusa_conf;
+        medusa_conf_t* conf = &medusa_ctx->medusa_config;
 
         if (conf->display_to_default_output)
         {
@@ -674,9 +716,9 @@ int medusa_send(struct medusa_message_bucket* message_bucket, medusa_ctx_t* medu
         }
     }
 
-    if (info->info_output_buffer != medusa_ctx->output_buffer)
+    if (info->info_output_buffer != medusa_ctx->medusa_output)
     {
-        assert(info->info_format_buffer != medusa_ctx->format_buffer);
+        assert(info->info_format_buffer != medusa_ctx->medusa_format);
 
         free((void*)info->info_output_buffer);
 
@@ -689,9 +731,9 @@ int medusa_send(struct medusa_message_bucket* message_bucket, medusa_ctx_t* medu
 
 int medusa_dispatch_message(struct medusa_message_bucket* message_bucket, medusa_ctx_t* medusa_ctx)
 {
-    medusa_cond_t condition = message_bucket->message_condition;
+    medusa_cond_t* condition = &message_bucket->message_condition;
 
-    struct medusa_produce_info* info = message_bucket->message_info; 
+    /* struct medusa_produce_info* info = message_bucket->message_info; */
 
     if (condition->message_condition != MESSAGE_COND_WOUT)
     {
@@ -720,11 +762,13 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
     
     medusa_conf_t* medusa_conf = NULL;
 
-    char medusa_format[_STACK_FORMAT_BUFFER_SZ_];
+    char stack_format[_STACK_FORMAT_BUFFER_SZ_];
+
+    #define _STACK_OUTPUT_BUFFER_SZ_ (int)(_STACK_FORMAT_BUFFER_SZ_ * _GROWABLE_PERCENTAGE_)
 
     char stack_output[_STACK_OUTPUT_BUFFER_SZ_];
 
-    char* format_use = medusa_format;
+    char* format_use = stack_format;
 
     char* output_use = stack_output;
 
@@ -734,9 +778,9 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
         
         medusa_conf = &medusa_ctx->medusa_config;
 
-        format_use = medusa->medusa_format;
+        format_use = medusa_ctx->medusa_format;
 
-        output_use = medusa->medusa_output;
+        output_use = medusa_ctx->medusa_output;
     }
 
     struct medusa_produce_info produce_result;
@@ -917,9 +961,9 @@ int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
         memcpy(&medusa_ctx->medusa_config, &medusa_default_conf, sizeof(medusa_default_conf));
     }
 
-    medusa_conf->medusa_format = (char*)calloc(sizeof(char), medusa_conf->format_buffer_sz);
+    medusa_ctx->medusa_format = (char*)calloc(sizeof(char), medusa_conf->format_buffer_sz);
 
-    medusa_conf->medusa_output = (char*)calloc(sizeof(char), medusa_conf->output_buffer_sz);
+    medusa_ctx->medusa_output = (char*)calloc(sizeof(char), medusa_conf->output_buffer_sz);
     
     pthread_mutex_init(&medusa_ctx->medusa_central_mutex, NULL);
 
@@ -982,9 +1026,11 @@ int32_t droidcat_session_stop(droidcat_ctx_t* droidcat_ctx)
 
 int main()
 {
+    medusa_printf(NULL, "Droidcat Welcome!");
+
     droidcat_ctx_t* main_droidcat = (droidcat_ctx_t*)calloc(1, sizeof(droidcat_ctx_t));
 
-    if (main_droidcat == NULL) 
+    if (main_droidcat == NULL)
     {
         medusa_fprintf(stderr, NULL, "Can't allocate droidcat context, malloc returns NULL\n");
         return -1;
