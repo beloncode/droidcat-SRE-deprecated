@@ -1,10 +1,28 @@
 #include <stdio.h>
+
 #include <stdint.h>
+
 #include <malloc.h>
+
 #include <assert.h>
+
+#include <string.h>
+
 #include <stdbool.h>
+
+#include <ctype.h>
+
+#if defined(_WIN64)
+
+#elif defined(__unix__)
+
 #include <sys/resource.h>
+
+#include <unistd.h>
+
 #include <pthread.h>
+
+#endif
 
 static const char g_version[] = "v000a0";
 
@@ -79,7 +97,7 @@ typedef struct medusa_conf
 
     #if defined(_WIN64)
 
-    #else defined(__unix__)
+    #elif defined(__unix__)
 
     int default_output_fd;
 
@@ -730,24 +748,21 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
         .collect_level = level_id
     }; 
 
+    produce_result.info_format_buffer = format_use;
+    produce_result.info_output_buffer = output_use;
+
     if (medusa_ctx != NULL)
     {
-        local_produce.info_format_buffer = format_use;
-        local_produce.info_output_buffer = output_use;
-
         if (medusa_should_log(level_id, medusa_ctx) == false)
         {
             return -1;
         }
 
         local_produce.collect_format_sz = medusa_conf->format_buffer_sz;
-        local_produce.collect_output_sz = medusa_conf->format_output_sz;
+        local_produce.collect_output_sz = medusa_conf->output_buffer_sz;
     }
     else
     {
-        local_produce.info_format_buffer = stack_format;
-        local_produce.info_output_buffer = stack_output;
-
         local_produce.collect_format_sz = sizeof(stack_format);
         local_produce.collect_output_sz = sizeof(stack_output);
     }
@@ -756,10 +771,10 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
 
     const int needed_fmt_size = vsprintf(NULL, fmt, va_format);
 
-    if (needed_fmt_size > stack_produce.collect_format_sz)
+    if (needed_fmt_size > local_produce.collect_format_sz)
     {
         medusa_fprintf(stderr, droidcat_ctx, "The next log event will be truncated in %d bytes\n", 
-            stack_produce.collect_format_sz);
+            local_produce.collect_format_sz);
         
         if (medusa_conf == NULL) goto produce;
 
@@ -783,24 +798,22 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
         
         MEDUSA_PRODUCE_REALLOC(produce_result.info_format_buffer, needed_fmt_size);
 
-        stack_produce.collect_format_sz = needed_fmt_size;
+        local_produce.collect_format_sz = needed_fmt_size;
 
-        #define _GROWABLE_PERCENTAGE_ 1.65 
-
-        const int new_output_size = needed_fmt_size * _GROWABLE_PERCENTAGE_;
+        const int new_output_size = needed_fmt_size * medusa_conf->growable_percentage;
 
         MEDUSA_PRODUCE_REALLOC(produce_result.info_output_buffer, new_output_size);
 
-        stack_produce.collect_output_sz = new_output_size;
+        local_produce.collect_output_sz = new_output_size;
     }
 
     produce:
 
-    vsnprintf(produce_result.info_format_buffer, stack_produce.collect_format_sz, fmt, va_format);
+    vsnprintf(produce_result.info_format_buffer, local_produce.collect_format_sz, fmt, va_format);
 
     produce_result.message_thread_context = medusa_current_context(medusa_ctx);
 
-    const int64_t medusa_ret = medusa_produce(&stack_produce, medusa_ctx);
+    const int64_t medusa_ret = medusa_produce(&local_produce, medusa_ctx);
 
     struct medusa_message_bucket stack_bucket = {
 
@@ -812,7 +825,7 @@ static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* cur
     {
         assert(medusa_ctx != NULL);
 
-        memcpy(&stack_bucket.message_condition, stack_bucket, sizeof(*stack_bucket));
+        memcpy(&stack_bucket.message_condition, current_cond, sizeof(*current_cond));
     }
 
     medusa_raise_event(level_id, &stack_bucket, droidcat_ctx);
@@ -933,14 +946,15 @@ int32_t medusa_deactivate(medusa_ctx_t* medusa_ctx)
 
     medusa_ctx->medusa_is_running = false;
 
-    free((void*)medusa_conf->medusa_format);
+    free((void*)medusa_ctx->medusa_format);
 
-    free((void*)medusa_conf->medusa_output);
+    free((void*)medusa_ctx->medusa_output);
 
     pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
 
     pthread_mutex_destroy(&medusa_ctx->medusa_central_mutex);
 
+    return 0;
 }
 
 int32_t droidcat_session_start(droidcat_ctx_t* droidcat_ctx)
