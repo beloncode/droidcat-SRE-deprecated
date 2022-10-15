@@ -283,7 +283,7 @@ bool medusa_should_log(const medusa_type_e id, medusa_ctx_t* medusa_ctx)
 
     const uint8_t* medusa_level = (uint8_t*)&medusa_config->displayable_level;
 
-    bool should_be = *medusa_level >> id & (uint8_t)id;
+    bool should_be = *medusa_level >> id & 1;
 
     pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
 
