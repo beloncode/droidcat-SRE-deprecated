@@ -959,7 +959,7 @@ int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
 {
     assert(medusa_ctx->medusa_is_running == false);
 
-    if (medusa_conf == NULL)
+    if (medusa_conf != NULL)
     {
         memcpy(&medusa_ctx->medusa_config, medusa_conf, sizeof(*medusa_conf));
     }
@@ -1033,7 +1033,7 @@ int32_t droidcat_session_stop(droidcat_ctx_t* droidcat_ctx)
 
 int main()
 {
-    medusa_printf(NULL, "Droidcat Welcome!");
+    medusa_printf(NULL, "Droidcat Welcome!\n");
 
     droidcat_ctx_t* main_droidcat = (droidcat_ctx_t*)calloc(1, sizeof(droidcat_ctx_t));
 
