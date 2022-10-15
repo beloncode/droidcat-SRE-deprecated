@@ -50,9 +50,9 @@ typedef struct medusa_level
     
     unsigned error_level: 1;
 
-} medusa_level_t;
+} __attribute__((aligned(4))) medusa_level_t;
 
-static_assert(sizeof(medusa_level_t) == 1, "There's a problem within medusa_level structure alignment");
+static_assert(sizeof(medusa_level_t) == 4, "There's a problem within medusa_level structure alignment");
 
 typedef struct medusa_conf
 {
@@ -84,6 +84,8 @@ static const medusa_conf_t medusa_default_conf = {
     #define _MEDUSA_USER_LEVEL_ 0xff & 0x1f
     
     .displayable_level = _MEDUSA_USER_LEVEL_,
+
+    #endif
 
     .format_buffer_sz = 0x7f,
 
