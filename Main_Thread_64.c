@@ -121,7 +121,7 @@ struct medusa_produce_collect
 {
     struct medusa_produce_info* collect_info;
 
-    const medusa_level_t collect_level;
+    const medusa_type_e collect_level;
 
     int16_t collect_format_sz;
 
@@ -158,16 +158,39 @@ struct medusa_message_bucket
     struct medusa_produce_info* message_info;    
 };
 
-bool medusa_should_log(const medusa_type_e id, const medusa_conf_t* medusa_conf)
+bool medusa_should_log(const medusa_type_e id, medusa_ctx_t* medusa_ctx)
 {
-    const uint8_t* medusa_level = (uint8_t*)&medusa_conf->displayable_level;
+    pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
+
+    medusa_conf_t* medusa_config = &medusa_ctx->medusa_config;
+
+    const uint8_t* medusa_level = (uint8_t*)&medusa_config->displayable_level;
 
     bool should_be = *medusa_level & (uint8_t)id;
+
+    pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
 
     return should_be;
 }
 
-void medusa_raise_event(medusa_level_t current_level, const struct medusa_message_bucket* message,
+typedef struct hardtree_ctx 
+{
+
+} hardtree_ctx_t;
+
+typedef void* (*droidcat_event_t)(const char* event_string, int32_t event_code, const void* event_ptr);
+
+typedef struct droidcat_ctx 
+{
+    const char* install_dir;
+    hardtree_ctx_t* working_dir_ctx;
+    medusa_ctx_t* medusa_log_ctx;
+
+    droidcat_event_t droidcat_event;
+
+} droidcat_ctx_t;
+
+void medusa_raise_event(medusa_type_e current_level, const struct medusa_message_bucket* message,
     droidcat_ctx_t* droidcat_ctx)
 {
     if (droidcat_ctx == NULL) return;
@@ -176,10 +199,10 @@ void medusa_raise_event(medusa_level_t current_level, const struct medusa_messag
 
     assert(droidcat_ctx != NULL);
         
-    droidcat_ctx->droidcat_event(_MEDUSA_EVENT_STR_, (int)current_level, (const void*)&stack_bucket);
+    droidcat_ctx->droidcat_event(_MEDUSA_EVENT_STR_, (int)current_level, (void*)message);
 }
 
-typedef void* (droidcat_event_t*)(const char* event_string, int32_t event_code, const void* event_ptr);
+static int64_t medusa_fprintf(FILE* output_file, droidcat_ctx_t *droidcat_ctx, const char* fmt, ...);
 
 static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const char* fmt, va_list va)
 {
@@ -191,13 +214,13 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
 
     const int64_t needed_size = vsprintf(NULL, fmt, va);
 
-    medusa_ctx_t* medusa_ctx = droidcat_ctx->medusa_ctx;
+    medusa_ctx_t* medusa_ctx = droidcat_ctx->medusa_log_ctx;
 
     if (droidcat_ctx != NULL)
     {
         if (medusa_ctx == NULL) goto generate;
 
-        if (medusa_should_log(MEDUSA_LOG_ADVICE, &medusa_ctx->medusa_config) == false) return -1;
+        if (medusa_should_log(MEDUSA_LOG_ADVICE, medusa_ctx) == false) return -1;
     }
 
     generate:
@@ -207,13 +230,10 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
         medusa_fprintf(stderr, droidcat_ctx, "Format message will be truncated in %d bytes", needed_size);
     }
 
-    vsnprintf(local_buffer, sizeof(local_buffer), fmt, va);
-
-    va_end(format);
+    vsnprintf(local_format, sizeof(local_format), fmt, va);
 
     struct medusa_produce_info local_produce = {
         .info_format_buffer = local_format,
-        .info_output_buffer = local_buffer,
         .message_thread_context = medusa_current_context(medusa_ctx);
 
     };
@@ -223,9 +243,9 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
         .message_info = &local_produce
     };
 
-    medusa_raise_event((medusa_level_t)0, &current_bucket, droidcat_ctx);
+    medusa_raise_event((medusa_type_e)0, &current_bucket, droidcat_ctx);
 
-    const int64_t medusa_ret = fprintf(output_file, "%s", local_buffer.info_format_buffer);
+    const int64_t medusa_ret = fprintf(output_file, "%s", local_produce.info_format_buffer);
 
     return medusa_ret;
 }
@@ -258,7 +278,7 @@ static int64_t medusa_printf(droidcat_ctx_t *droidcat_ctx,
     return medusa_ret;
 }
 
-static int64_t medusa_do(const medusa_level_t level_id, medusa_sourcetrace_t* current_source, 
+static int64_t medusa_do(const medusa_type_e level_id, medusa_sourcetrace_t* current_source, 
     droidcat_ctx_t* droidcat_ctx, const char* fmt, ...) 
 {
     va_list va_format;
@@ -278,7 +298,7 @@ static int64_t medusa_do(const medusa_level_t level_id, medusa_sourcetrace_t* cu
 
     if (medusa_conf != NULL)
     {
-        if (medusa_should_log(level_id, medusa_conf) == false)
+        if (medusa_should_log(level_id, medusa_ctx) == false)
         {
             return -1;
         }
@@ -339,32 +359,32 @@ static int64_t medusa_do(const medusa_level_t level_id, medusa_sourcetrace_t* cu
 
     if (needed_fmt_size > stack_produce.collect_format_sz)
     {
-        medusa_fprintf(droidcat_ctx, "The next log event will be truncated in %d bytes\n", 
+        medusa_fprintf(stderr, droidcat_ctx, "The next log event will be truncated in %d bytes\n", 
             stack_produce.collect_format_sz);
         
         if (medusa_conf == NULL) goto produce;
 
         if (medusa_conf->adjust_buffers_size == false) goto produce;
 
-        if (produce_info.format_is_allocated == false) goto produce;
+        if (produce_result.format_is_allocated == false) goto produce;
 
-        #define MEDUSA_PRODUCE_REALLOC_BUFFER(ptr, new_size)
+        #define MEDUSA_PRODUCE_REALLOC_BUFFER(ptr, new_size)\
             do\
             {\
                 char* lagger_buffer = realloc(ptr, new_size);\
-                if (lagger_format_size == NULL)
+                if (lagger_buffer == NULL)\
                 {\
                     medusa_fprintf(stderr, droidcat_ctx, "Can't reallocate %#lx "\
-                        "for format buffer\n", needed_fmt_size);\
+                        "for format buffer\n", new_size);\
                     goto produce;\
-                }
-                ptr = lagger_buffer;
+                }\
+                ptr = lagger_buffer;\
             }\
             while (0)\
         
         MEDUSA_PRODUCE_REALLOC_BUFFER(produce_result.info_format_buffer, needed_fmt_size);
 
-        produce_result.format_buffer_sz = needed_fmt_size;
+        stack_produce.collect_format_sz = needed_fmt_size;
 
         #define _GROWABLE_PERCENTAGE_ 1.65 
 
@@ -372,11 +392,11 @@ static int64_t medusa_do(const medusa_level_t level_id, medusa_sourcetrace_t* cu
 
         MEDUSA_PRODUCE_REALLOC_BUFFER(produce_result.info_output_buffer, new_output_size);
 
-        produce_result.output_buffer_sz = new_output_size;
+        stack_produce.collect_output_sz = new_output_size;
     }
 
     produce:
-    vsnprintf(stack_produce.info_format_buffer, stack_produce.format_buffer_sz, fmt, va_format);
+    vsnprintf(produce_result.info_format_buffer, stack_produce.collect_format_sz, fmt, va_format);
 
     produce_result.message_thread_context = medusa_current_context(medusa_ctx);
 
@@ -384,14 +404,14 @@ static int64_t medusa_do(const medusa_level_t level_id, medusa_sourcetrace_t* cu
 
     struct medusa_message_bucket stack_bucket = {
         
-        .medusa_condition = MESSAGE_COND_WOUT,
+        .message_condition = MESSAGE_COND_WOUT,
         
-        .medusa_info = &produce_result
+        .message_info = &produce_result
     };
 
     medusa_raise_event(level_id, &stack_bucket, droidcat_ctx);
 
-    const bool medusa_ok = (bool)medusa_dispatch_message(&stack_bucket, medusa_ctx)
+    const bool medusa_ok = (bool)medusa_dispatch_message(&stack_bucket, medusa_ctx);
 
     va_end(va_format);
 
@@ -408,7 +428,7 @@ int64_t __attribute__((weak, alias("medusa_do"))) medusa_go();
             .source_filename = __FILE__,\
             .source_line = __line__\
         };\
-        medusa_do(level, &source_trace, droidcat, format, __VA_ARGS__);\
+        medusa_go(level, &source_trace, droidcat, format, __VA_ARGS__);\
     }\
     while (0)
 
