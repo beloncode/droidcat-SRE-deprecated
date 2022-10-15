@@ -139,6 +139,10 @@ typedef struct medusa_ctx
 {
     medusa_conf_t medusa_config;
 
+    pthread_mutex_t medusa_central_mutex;
+
+    bool medusa_is_running;
+
 } medusa_ctx_t;
 
 typedef enum medusa_message_cond {
@@ -462,30 +466,90 @@ int64_t __attribute__((weak, alias("medusa_do"))) medusa_go();
 #define medusa_error(droidcat_ctx, format, ...)\
     medusa_make(MEDUSA_LOG_ERROR, droidcat_ctx, format, __VA_ARGS__)
 
-typedef struct hardtree_ctx 
-{
-
-} hardtree_ctx_t;
-
-typedef struct droidcat_ctx 
-{
-    const char* install_dir;
-    hardtree_ctx_t* working_dir_ctx;
-    medusa_ctx_t* medusa_log_ctx;
-
-    droidcat_event_t droidcat_event;
-
-} droidcat_ctx_t;
-
 int16_t droidcat_init(droidcat_ctx_t* droidcat_ctx)
 {
     droidcat_ctx->working_dir_ctx = (hardtree_ctx_t*)calloc(1, sizeof(hardtree_ctx_t));
+    droidcat_ctx->medusa_log_ctx = (medusa_ctx_t*)calloc(1, sizeof(medusa_ctx_t));
     return 0;
 }
 
 int16_t droidcat_destroy(droidcat_ctx_t* droidcat_ctx) 
 {
     free((void*)droidcat_ctx->working_dir_ctx);
+    free((void*)droidcat_ctx->medusa_log_ctx);
+    return 0;
+}
+
+void* main_event_log(const char* event_string, int32_t event_code, const void* event_ptr)
+{
+    return NULL;
+}
+
+
+int32_t medusa_activate(medusa_conf_t* medusa_conf, medusa_ctx_t* medusa_ctx)
+{
+    assert(medusa_ctx->medusa_is_running == false);
+
+    if (medusa_conf != NULL)
+    {
+        memcpy(&medusa_ctx->medusa_config, medusa_conf, sizeof(*medusa_conf));
+    }
+    else
+    {
+        memcpy(&medusa_ctx->medusa_config, &medusa_default_conf, sizeof(medusa_default_conf));
+    }
+
+    pthread_mutex_init(&medusa_ctx->medusa_central_mutex, NULL);
+
+    medusa_ctx->medusa_is_running = true;
+
+    return 0;
+}
+
+/* The thread/method thats wait for medusa will acquire his lock */
+int32_t medusa_wait(int time_out, medusa_ctx_t* medusa_ctx)
+{
+    assert(medusa_ctx->medusa_is_running == false);
+
+    pthread_mutex_lock(&medusa_ctx->medusa_central_mutex);
+
+    return 0;
+}
+
+int32_t medusa_deactivate(medusa_ctx_t* medusa_ctx)
+{
+    #define _MEDUSA_WAIT_TIME_OUT_ 100
+    
+    medusa_wait(_MEDUSA_WAIT_TIME_OUT_, medusa_ctx);
+
+    medusa_ctx->medusa_is_running = false;
+
+    pthread_mutex_unlock(&medusa_ctx->medusa_central_mutex);
+
+    pthread_mutex_destroy(&medusa_ctx->medusa_central_mutex);
+
+}
+
+int32_t droidcat_session_start(droidcat_ctx_t* droidcat_ctx)
+{
+    droidcat_ctx->droidcat_event = main_event_log;
+
+    medusa_ctx_t* medusa_ctx = droidcat_ctx->medusa_log_ctx;
+
+    /* Uses default medusa configuration (all options at the configuration
+     * level byt the program should be activate) 
+    */
+    medusa_activate(NULL, medusa_ctx);
+
+    return 0;
+}
+
+int32_t droidcat_session_stop(droidcat_ctx_t* droidcat_ctx)
+{
+    medusa_ctx_t* medusa_ctx = droidcat_ctx->medusa_log_ctx;
+
+    medusa_deactivate(medusa_ctx);
+
     return 0;
 }
 
@@ -493,11 +557,17 @@ int main()
 {
     droidcat_ctx_t* main_droidcat = (droidcat_ctx_t*)calloc(1, sizeof(droidcat_ctx_t));
 
-    if (main_droidcat == NULL) {
-
+    if (main_droidcat == NULL) 
+    {
+        medusa_fprintf(stderr, NULL, "Can't allocate droidcat context, malloc returns NULL\n");
+        return -1;
     }
 
-    droidcat_init(main_droidcat);
+    const int64_t droid_start = droidcat_init(main_droidcat);
+
+    if (droid_start != 0) {}
+
+    droidcat_session_start(main_droidcat);
 
     struct rlimit local_limits;
     
@@ -507,6 +577,8 @@ int main()
     
     medusa_fprintf(stderr, main_droidcat, "[*] droidcat %s has started with 1 actual real thread (%lu) "
             "and %#lx of maximum stack size\n", g_version, pthread_self(), max_stack);
+        
+    droidcat_session_stop(main_droidcat);
 
     droidcat_destroy(main_droidcat);
 
