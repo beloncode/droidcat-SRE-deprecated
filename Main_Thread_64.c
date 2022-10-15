@@ -329,8 +329,6 @@ static int64_t medusa_fprintf(FILE* output_file, droidcat_ctx_t *droidcat_ctx, c
 
 static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const char* fmt, va_list va)
 {
-    if (output_file == NULL) return -1;
-
     #define _STACK_FORMAT_BUFFER_SZ_ 0x5f
 
     char local_format[_STACK_FORMAT_BUFFER_SZ_];
@@ -367,7 +365,10 @@ static int64_t medusa_va(FILE* output_file, droidcat_ctx_t* droidcat_ctx, const 
 
     medusa_raise_event((medusa_type_e)0, &current_bucket, droidcat_ctx);
 
-    const int64_t medusa_ret = fprintf(output_file, "%s", local_produce.info_format_buffer);
+    if (output_file != NULL)
+    {
+        const int64_t medusa_ret = fprintf(output_file, "%s", local_produce.info_format_buffer);
+    }
 
     return medusa_ret;
 }
@@ -378,6 +379,8 @@ static int64_t medusa_fprintf(FILE* output_file, droidcat_ctx_t *droidcat_ctx,
     va_list format;
 
     va_start(format, fmt);
+
+    if (output_file == NULL) return -1;
 
     const int64_t medusa_ret = medusa_va(output_file, droidcat_ctx, fmt, format);
 
