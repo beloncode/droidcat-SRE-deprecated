@@ -2,7 +2,7 @@
 
 ## Concept and Purposes
 
-Droidcat it's RSE based tool with purposes to manager (extends to visualizer, unpack, decode, disassembler, encode and build), analysis (checks, rate, search), signer (verify and sing) Android Packages files.
+Droidcat it's RSE based tool with purposes to manager (extends to visualizer, unpack, decode, disassembler, encode and build), analysis (checks, rate, search), signer (verify and sign) Android Packages files.
 
 ## Purposes offered by the tool
 
