@@ -14,4 +14,9 @@ Droidcat it's RSE based tool with purposes to manager (extends to visualizer, un
 
 ## Similar Projects
 
-- Apktool (Created in java)
+- Apktool (Wrote in Java)
+
+## Program Work Situation and Execution Time
+
+- Execution directory: Droidcat will checks firstly the installation directory used into build parameters (parameter used at the build time), if the work tree isn't found inside the directory, droidcat will search into the current runtime directory for your all program directory.
+ 

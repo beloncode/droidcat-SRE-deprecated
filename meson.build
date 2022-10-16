@@ -1,7 +1,7 @@
 project('droidcat', ['c'], version: '000a0')
-root_src = files('Main_Thread_64.c')
+root_src = files('Main_Thread_Start.c')
 compiler_args = [
-    '-std=c++11', 
+    '-std=c11', 
     '-fstack-protector', 
     '-O2', 
     '-ffast-math', 
