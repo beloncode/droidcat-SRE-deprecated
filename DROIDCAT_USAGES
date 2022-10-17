@@ -8,6 +8,6 @@ droidcat -in F-Droid.apk -structure-model="APKTOOL" -script=decode.dsc -output-i
 
 droidcat -in F-Droid.apk -m 1 -use-engine="spyware-aaa" -display-file-info -display-api-name -display-package-name -display-required-permissions -test-for-antifeatures
 
-droidcat -display-required-permissions --daemon F-Droid.apk
+droidcat -display-required-permissions -daemon F-Droid.apk
 
 droidcat -script="extract.dsc" -execute="echo Everything is OK!" -progress-mode="simple" F-Droid.apk
