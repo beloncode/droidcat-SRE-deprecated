@@ -88,6 +88,8 @@ int tpool_init(int worker_count, tpool_t* thread_pool)
     
     thread_pool->worker_threads = calloc((int8_t)worker_count, sizeof(*thread_pool->worker_threads));
 
+    thread_pool->worker_cnt = worker_count;
+
     pthread_mutex_init(&thread_pool->tpool_lock, NULL);
 
     pthread_mutex_lock(&thread_pool->tpool_lock);
