@@ -49,3 +49,5 @@ int tpool_init(int worker_count, tpool_t* thread_pool);
 int tpool_stop(tpool_t* thread_pool);
 
 int tpool_finalize(tpool_t* thread_pool);
+
+void* tpool_wait_for_result(function_task_t task_operation, void* task_data, tpool_t* thread_pool);

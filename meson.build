@@ -32,7 +32,11 @@ if get_option('enable_debug')
         compiler_args += '-fsanitize=address'
     endif
 else
-    compiler_args += '-O2'
+    compiler_args += '-O1'
 endif
 
 executable(meson.project_name(), sources: [root_src, data_src, cpu_src], c_args: compiler_args )
+
+tpool_test_src = files('unit/Thread_Pool_TEST.c', 'Thread_Pool.c')
+tpool_test = executable('thread_pool_test', sources: [tpool_test_src, data_src])
+test('Unit Thread Pool Test', tpool_test)
