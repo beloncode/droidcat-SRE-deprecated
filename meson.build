@@ -1,5 +1,16 @@
 project('droidcat', ['c'], version: '000a0', default_options: [])
-root_src = files('Main_Thread_Start.c')
+root_src = files(
+    'Main_Thread.c',
+    'Thread_Pool.c', 
+)
+data_src = files(
+    'data/Doubly_Linked.c',
+    'data/FIFO_Queue.c'
+)
+cpu_src = files(
+    'cpu/Hardware_Info.c',
+    'cpu/Physical_CPU.c'
+)
 
 compiler_args = [
     '-std=c11', 
@@ -10,7 +21,6 @@ compiler_args = [
 ]
 
 c_id = meson.get_compiler('c')
-
 host_compiler = c_id.get_id()
 
 if get_option('enable_debug')
@@ -25,7 +35,4 @@ else
     compiler_args += '-O2'
 endif
 
-message(compiler_args)
-
-executable(meson.project_name(), sources: [root_src], c_args: compiler_args )
-
+executable(meson.project_name(), sources: [root_src, data_src, cpu_src], c_args: compiler_args )
