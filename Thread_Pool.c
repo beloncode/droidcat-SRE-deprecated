@@ -142,7 +142,9 @@ int tpool_stop(tpool_t* thread_pool)
 
     pthread_mutex_unlock(mutex_lock);
 
-    return 0;
+    int sync_ret = tpool_sync(thread_pool);
+
+    return sync_ret;
 }
 
 /* Returns the number of canceled worker threads */

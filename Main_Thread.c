@@ -20,6 +20,11 @@ int main()
 
     tpool_init(4, main_pool);
 
+    /* Stopping the threads pool service 
+     * TODO: Creates the tpool_resume function 
+    */
+    tpool_stop(main_pool);
+
     tpool_finalize(main_pool);
 
     cpu_finalize(main_CPU);
