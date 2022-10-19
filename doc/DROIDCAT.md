@@ -32,7 +32,7 @@ runtime directory for your all program directory.
 ## Client and Server Execution Perspective
 
 - Droidcat has 2 modes of operations, client and server, the client acts
-as the default operation when the ```--daemon``` isn't specified at the command 
+as the default operation when the ```-daemon``` isn't specified at the command 
 line parameters, when in server mode, Droidcat will receive communication 
 from others Droidcat clients for data processing purposes, all information 
 will be compressed and encrypted before any data transference occurs.

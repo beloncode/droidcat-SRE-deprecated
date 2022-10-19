@@ -1,8 +1,9 @@
 [log]
 filename="droidcat.log"
 [droidcat]
-max_thread=2
+max_thread=4
 use_max_cpu=true
+config_filename="settings.toml"
 
 [input]
 default_input="F-Droid.apk"
