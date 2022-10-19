@@ -159,9 +159,9 @@ static int tpool_cancel(tpool_t* thread_pool)
         pthread_cancel(thread_worker_id);
         
         /* Ensure that the thread as been canceled */
-        int join_ret = pthread_join(thread_worker_id, NULL);
+        //int join_ret = pthread_join(thread_worker_id, NULL);
         
-        assert(join_ret != 0);
+        //assert(join_ret == 0);
     }
 
     return worker_cur;
@@ -179,15 +179,10 @@ int tpool_finalize(tpool_t* thread_pool)
     /* All the mutexes must be destroyed in locked staged for avoid
      * undefined behaviour!
     */
-
-    /* TODO: foreach workers, checks if can cancel, if not wait until the worker are done */
-    int sync_ret = tpool_sync(thread_pool);
-    
-    assert(sync_ret == 0);
-    
+        
     int cancel_ret = tpool_cancel(thread_pool);
     
-    assert(cancel_ret == (tpool_workers(thread_pool) - 1));
+    assert(cancel_ret == tpool_workers(thread_pool));
 
     pthread_mutex_destroy(&thread_pool->tpool_lock);
 
