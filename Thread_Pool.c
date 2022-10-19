@@ -53,17 +53,36 @@ static void* tpool_worker_routine(void* tpool)
 
     while (1)
     {
-        pthread_mutex_lock(&thread_pool->tpool_lock);
+        pthread_mutex_lock(&thread_pool->workers_lock);
+        
         worker_content->can_cancel = 1;
 
-        pthread_cond_wait(&thread_pool->tpool_sync_tasks, &thread_pool->tpool_lock);
+        pthread_cond_wait(&thread_pool->tpool_sync_tasks, &thread_pool->workers_lock);
+
+        #if TPOOL_USES_DETACHED
+        if (thread_pool->pool_begin_destroyed)
+        {
+            printf("The thread %d will be detached\n", worker_content->worker_id);
+        
+            pthread_mutex_lock(&thread_pool->tpool_lock);
+            
+            thread_pool->worker_cnt--;
+            
+            pthread_mutex_unlock(&thread_pool->tpool_lock);
+            
+            pthread_mutex_unlock(&thread_pool->workers_lock);
+            
+            pthread_exit(NULL);
+        }
+        #endif
 
         struct thread_task* acquired_task = queue_dequeue(thread_pool->task_queue_safe);
 
-        /* From this stage, the worker thread can be canceled */
+        pthread_mutex_unlock(&thread_pool->workers_lock);
 
         if (acquired_task == NULL) continue;
 
+        /* From this stage, the worker thread can't be canceled */
         worker_content->can_cancel = 0;
 
         acquired_task->task_result = acquired_task->task_function(acquired_task->task_data);
@@ -81,7 +100,6 @@ static void* tpool_worker_routine(void* tpool)
 
             free((void*)acquired_task);
         }
-        pthread_mutex_unlock(&thread_pool->tpool_lock);
     }
 
     return NULL;
@@ -99,6 +117,8 @@ int tpool_init(int worker_count, tpool_t* thread_pool)
     thread_pool->worker_cnt = worker_count;
 
     pthread_mutex_init(&thread_pool->tpool_lock, NULL);
+
+    pthread_mutex_init(&thread_pool->workers_lock, NULL);
 
     pthread_mutex_lock(&thread_pool->tpool_lock);
 
@@ -126,11 +146,16 @@ int tpool_init(int worker_count, tpool_t* thread_pool)
         pthread_t* thread_posix = &worker_cur[worker_index].worker_sched;
         
         int posix_result = pthread_create(thread_posix, NULL, tpool_worker_routine, (void*)thread_pool);
-    
-        if (posix_result != 0)
-        {
 
-        }
+        if (posix_result != 0) {}
+
+        #if TPOOL_USES_DETACHED
+        /* Detach the thread when his as done */
+        int detach_ret = pthread_detach(*thread_posix);
+        
+        assert(detach_ret == 0);
+        #endif
+
     }
 
     thread_pool->thread_pool_run = 1;
@@ -155,29 +180,47 @@ int tpool_stop(tpool_t* thread_pool)
     return sync_ret;
 }
 
+size_t tpool_workers(const tpool_t* thread_pool)
+{
+    return thread_pool->worker_cnt;
+}
+
 /* Returns the number of canceled worker threads */
 static int tpool_cancel(tpool_t* thread_pool)
 {
     size_t worker_cur = 0;
 
+    int workers_total = tpool_workers(thread_pool);
+
+    #if TPOOL_USES_DETACHED
+
+    while (tpool_workers(thread_pool) != 0)
+    {
+        pthread_cond_broadcast(&thread_pool->tpool_sync_tasks);
+    }
+
+    worker_cur = workers_total;
+    
+    #else
+
+    pthread_mutex_lock(&thread_pool->tpool_lock);
+
     for (; worker_cur < thread_pool->worker_cnt; worker_cur++)
     {
         pthread_t thread_worker_id = thread_pool->worker_threads[worker_cur].worker_sched;
-        
-        pthread_cancel(thread_worker_id);
-        
+
+        thread_pool->worker_cnt--;
+
         /* Ensure that the thread as been canceled */
-        //int join_ret = pthread_join(thread_worker_id, NULL);
-        
-        //assert(join_ret == 0);
+        pthread_cancel(thread_worker_id);
+
     }
 
-    return worker_cur;
-}
+    pthread_mutex_unlock(&thread_pool->tpool_lock);
 
-size_t tpool_workers(const tpool_t* thread_pool)
-{
-    return thread_pool->worker_cnt;
+    #endif
+
+    return workers_total - worker_cur;
 }
 
 int tpool_finalize(tpool_t* thread_pool)
@@ -187,12 +230,18 @@ int tpool_finalize(tpool_t* thread_pool)
     /* All the mutexes must be destroyed in locked staged for avoid
      * undefined behaviour!
     */
-        
+    #if TPOOL_USES_DETACHED
+    thread_pool->pool_begin_destroyed = 1;
+    #endif
+
     int cancel_ret = tpool_cancel(thread_pool);
-    
+
+    /* This must be equal to 1, because shouldn't exist any workers alive */
     assert(cancel_ret == tpool_workers(thread_pool));
 
     pthread_mutex_destroy(&thread_pool->tpool_lock);
+
+    pthread_mutex_destroy(&thread_pool->workers_lock);
 
     pthread_cond_destroy(&thread_pool->tpool_sync_tasks);
 

@@ -3,6 +3,8 @@
 
 #include "data/FIFO_Queue.h"
 
+#define TPOOL_USES_DETACHED 1
+
 typedef void* (*function_task_t)(void* task_data);
 
 typedef struct worker_thread
@@ -26,10 +28,15 @@ typedef struct tpool
     worker_thread_t* worker_threads;
 
     pthread_mutex_t tpool_lock;
+    pthread_mutex_t workers_lock;
 
     pthread_cond_t tpool_sync_tasks;
 
     _Atomic uint_fast8_t thread_pool_run;
+
+    #if TPOOL_USES_DETACHED
+    _Atomic uint_least8_t pool_begin_destroyed;
+    #endif
 
     FIFO_queue_t* task_queue_safe;
     
