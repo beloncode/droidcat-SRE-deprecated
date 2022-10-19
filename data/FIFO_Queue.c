@@ -98,23 +98,17 @@ void* queue_dequeue(FIFO_queue_t* fifo_queue)
     {
         pthread_mutex_lock(fifo_queue->queue_lock);
     }
-
-    doubly_linked_t* first_node = doubly_retr(0, fifo_queue->node_head);
     
-    if (first_node == NULL)
+    void* node_data = NULL;
+    
+    doubly_linked_t* next_valid = doubly_next_valid(fifo_queue->node_head);
+
+    if (next_valid != NULL)
     {
-        return NULL;
-    }
-    doubly_linked_t* next_valid = doubly_next_valid(first_node);
+        node_data = doubly_remove(next_valid, fifo_queue->node_head);
+    } 
 
-    if (next_valid == NULL)
-    {
-        return NULL;
-    }
-
-    void* node_data = doubly_remove(next_valid, fifo_queue->node_head);
-
-    fifo_sync(fifo_queue);
+    queue_sync(fifo_queue);
 
     if (fifo_queue->queue_lock != NULL)
     {

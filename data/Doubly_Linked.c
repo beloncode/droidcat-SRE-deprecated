@@ -157,12 +157,15 @@ size_t doubly_count(doubly_linked_t* doubly_head)
 
     doubly_linked_t* real_link = doubly_retr(0, doubly_head);
 
-    if (real_link == NULL)
-    {
-        return 1;
-    }
+    /* From implementation perspective, this value should be non NULL */
+    assert(real_link != 0);
 
-    int valid_nodes = 1;
+    int valid_nodes = 0;
+
+    if (doubly_head->node_valid != 0)
+    {
+        valid_nodes++;
+    }
 
     while ((real_link = doubly_next_valid(real_link))) valid_nodes++;
 
@@ -209,9 +212,9 @@ static int doubly_select_last(doubly_linked_t* node_link, void* user_data)
     
     if (node_link->node_valid != 1) return 0;
 
-    if (node_link->node_next != NULL) return 0;
-
     *last_ptr = node_link;
+
+    if (node_link->node_next == NULL) return 0;
 
     return 1;
 }
@@ -230,7 +233,7 @@ int doubly_clean(doubly_linked_t* doubly_head)
 
 void* doubly_remove(doubly_linked_t* remove_node, doubly_linked_t* doubly_head)
 {
-    if (doubly_exist(remove_node, doubly_head) == 0) return NULL;
+    if (doubly_exist(remove_node, doubly_head) == 0 && doubly_head != remove_node) return NULL;
 
     assert(remove_node->node_valid == 1);
 
@@ -258,8 +261,8 @@ int doubly_insert(void* user_data, doubly_linked_t* doubly_head)
         /* |-<[NODE 0]>-| */
         /* |------------| */
 
-        doubly_head->node_prev = doubly_head->node_next;
-        doubly_head->node_next = doubly_head->node_prev;
+        doubly_head->node_prev = doubly_head;
+        doubly_head->node_next = doubly_head;
 
         doubly_head->user_data = user_data;
         doubly_head->node_valid = 1;
