@@ -139,7 +139,7 @@ doubly_linked_t* doubly_next_valid(doubly_linked_t* node_item)
     node_item = node_item->node_next;
     while (node_item != NULL)
     {
-        if (node_item->node_valid)
+        if (node_item->node_valid != 0)
         {
             return node_item;
         }

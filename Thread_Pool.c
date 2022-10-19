@@ -58,12 +58,10 @@ static void* tpool_worker_routine(void* tpool)
         worker_content->can_cancel = 1;
 
         pthread_cond_wait(&thread_pool->tpool_sync_tasks, &thread_pool->workers_lock);
-
+        
         #if TPOOL_USES_DETACHED
         if (thread_pool->pool_begin_destroyed)
-        {
-            printf("The thread %d will be detached\n", worker_content->worker_id);
-        
+        {        
             pthread_mutex_lock(&thread_pool->tpool_lock);
             
             thread_pool->worker_cnt--;
@@ -75,7 +73,7 @@ static void* tpool_worker_routine(void* tpool)
             pthread_exit(NULL);
         }
         #endif
-
+        
         struct thread_task* acquired_task = queue_dequeue(thread_pool->task_queue_safe);
 
         pthread_mutex_unlock(&thread_pool->workers_lock);
@@ -91,8 +89,13 @@ static void* tpool_worker_routine(void* tpool)
         {
             /* Someone is waiting to the task begin completed */
             acquired_task->task_completed = 1;
+
+            pthread_mutex_lock(&thread_pool->tpool_lock);
             
             pthread_cond_signal(&acquired_task->task_condition);
+
+            pthread_mutex_unlock(&thread_pool->tpool_lock);
+
         }
         else
         {
@@ -280,7 +283,7 @@ void* tpool_wait_for_result(function_task_t task_operation, void* task_data, tpo
 
     /* Wait until some worker finished our task */
     pthread_cond_wait(&new_task->task_condition, &thread_pool->tpool_lock);
-    
+
     pthread_mutex_unlock(&thread_pool->tpool_lock);
 
     pthread_cond_destroy(&new_task->task_condition);
@@ -307,7 +310,7 @@ int tpool_execute(function_task_t task_operation, void* task_data, tpool_t* thre
     new_task->task_data = task_data;
     new_task->task_in_wait = 1;
 
-    int enqueue_ret = fifo_enqueue((void*)new_task, thread_pool->task_queue_safe);
+    int enqueue_ret = queue_enqueue((void*)new_task, thread_pool->task_queue_safe);
 
     /* Notify all workers that there's a task to be done */
     pthread_cond_broadcast(&thread_pool->tpool_sync_tasks);
