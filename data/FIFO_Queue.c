@@ -3,7 +3,7 @@
 
 #include "FIFO_Queue.h"
 
-FIFO_queue_t* fifo_queue_create(int64_t preallocate)
+FIFO_queue_t* queue_create(int64_t preallocate)
 {
     FIFO_queue_t* heap_queue = (FIFO_queue_t*)calloc(1, sizeof(FIFO_queue_t));
 
@@ -16,19 +16,19 @@ FIFO_queue_t* fifo_queue_create(int64_t preallocate)
     return heap_queue;
 }
 
-int fifo_queue_at_destroy(at_FIFO_destroy_t new_callback, FIFO_queue_t* fifo_queue)
+int queue_at_destroy(at_FIFO_destroy_t new_callback, FIFO_queue_t* fifo_queue)
 {
     fifo_queue->destroy_callback = new_callback;
     return 0;
 }
 
-int fifo_queue_at_dequeue(at_FIFO_dequeue_t new_callback, FIFO_queue_t* fifo_queue)
+int queue_at_dequeue(at_FIFO_dequeue_t new_callback, FIFO_queue_t* fifo_queue)
 {
     fifo_queue->dequeue_callback = new_callback;
     return 0;
 }
 
-int fifo_queue_safe_lock(FIFO_queue_t* fifo_queue)
+int queue_safe_lock(FIFO_queue_t* fifo_queue)
 {
     pthread_mutex_t** queue_lock_ptr = &fifo_queue->queue_lock;
 
@@ -51,7 +51,7 @@ int fifo_queue_safe_lock(FIFO_queue_t* fifo_queue)
     return 0;
 }
 
-static int fifo_sync(FIFO_queue_t* fifo_queue)
+static int queue_sync(FIFO_queue_t* fifo_queue)
 {
     /* The mutex must be locked for does this */
     int trylock_ret = pthread_mutex_trylock(fifo_queue->queue_lock);
@@ -67,7 +67,7 @@ static int fifo_sync(FIFO_queue_t* fifo_queue)
     return 0;
 }
 
-int fifo_enqueue(void* user_data, FIFO_queue_t* fifo_queue)
+int queue_enqueue(void* user_data, FIFO_queue_t* fifo_queue)
 {
     if (fifo_queue->queue_lock != NULL)
     {
@@ -76,7 +76,7 @@ int fifo_enqueue(void* user_data, FIFO_queue_t* fifo_queue)
 
     doubly_insert(user_data, fifo_queue->node_head);
 
-    fifo_sync(fifo_queue);
+    queue_sync(fifo_queue);
 
     if (fifo_queue->queue_lock != NULL)
     {
@@ -136,7 +136,7 @@ int queue_resize(int desired_capacity, FIFO_queue_t* fifo_queue)
     return 0;
 }
 
-int fifo_queue_destroy(FIFO_queue_t *fifo_queue)
+int queue_destroy(FIFO_queue_t *fifo_queue)
 {
     pthread_mutex_t** queue_mutex_ptr = &fifo_queue->queue_lock;
     
@@ -171,17 +171,17 @@ int fifo_queue_destroy(FIFO_queue_t *fifo_queue)
 
 }
 
-size_t fifo_queue_length(FIFO_queue_t *fifo_queue)
+size_t queue_length(const FIFO_queue_t *fifo_queue)
 {
     return fifo_queue->queue_length;
 }
 
-int fifo_queue_empty(FIFO_queue_t *fifo_queue)
+int queue_empty(const FIFO_queue_t *fifo_queue)
 {
-    return fifo_queue_length(fifo_queue) != 0;
+    return queue_length(fifo_queue) != 0;
 }
 
-int fifo_queue_full(FIFO_queue_t *fifo_queue)
+int queue_full(const FIFO_queue_t *fifo_queue)
 {
     return fifo_queue->queue_length == fifo_queue->queue_curr_cap;
 }

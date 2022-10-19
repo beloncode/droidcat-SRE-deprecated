@@ -28,24 +28,24 @@ typedef struct FIFO_queue
 
 } FIFO_queue_t;
 
-FIFO_queue_t* fifo_queue_create(int64_t preallocate);
+FIFO_queue_t* queue_create(int64_t preallocate);
 
-int fifo_queue_at_destroy(at_FIFO_destroy_t new_callback, FIFO_queue_t* fifo_queue);
+int queue_at_destroy(at_FIFO_destroy_t new_callback, FIFO_queue_t* fifo_queue);
 
-int fifo_queue_at_dequeue(at_FIFO_dequeue_t new_callback, FIFO_queue_t* fifo_queue);
+int queue_at_dequeue(at_FIFO_dequeue_t new_callback, FIFO_queue_t* fifo_queue);
 
-int fifo_queue_safe_lock(FIFO_queue_t* fifo_queue);
+int queue_safe_lock(FIFO_queue_t* fifo_queue);
 
-int fifo_enqueue(void* user_data, FIFO_queue_t* fifo_queue);
+int queue_enqueue(void* user_data, FIFO_queue_t* fifo_queue);
 
 void* queue_dequeue(FIFO_queue_t* fifo_queue);
 
-int fifo_queue_destroy(FIFO_queue_t *fifo_queue);
+int queue_destroy(FIFO_queue_t *fifo_queue);
 
-size_t fifo_queue_length(FIFO_queue_t *fifo_queue);
+size_t queue_length(const FIFO_queue_t *fifo_queue);
 
-int fifo_queue_empty(FIFO_queue_t *fifo_queue);
+int queue_empty(const FIFO_queue_t *fifo_queue);
 
-int fifo_queue_full(FIFO_queue_t *fifo_queue);
+int queue_full(const FIFO_queue_t *fifo_queue);
 
 #endif

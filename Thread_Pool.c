@@ -128,12 +128,12 @@ int tpool_init(int worker_count, tpool_t* thread_pool)
     pthread_cond_init(&thread_pool->tpool_sync_tasks, NULL);
 
     /* Preallocate 3 times of the existence workers in activate */
-    thread_pool->task_queue_safe = fifo_queue_create(worker_count * 3);
+    thread_pool->task_queue_safe = queue_create(worker_count * 3);
 
     assert(thread_pool->task_queue_safe != NULL);
 
     /* Enable the safe-lock into the queue, every enqueue/dequeue operation will have a valid mutex */ 
-    fifo_queue_safe_lock(thread_pool->task_queue_safe);
+    queue_safe_lock(thread_pool->task_queue_safe);
 
     if (thread_pool->worker_threads == NULL)
     {
@@ -250,7 +250,7 @@ int tpool_finalize(tpool_t* thread_pool)
 
     free((void*)thread_pool->worker_threads);
 
-    fifo_queue_destroy(thread_pool->task_queue_safe);
+    queue_destroy(thread_pool->task_queue_safe);
 
     return 0;
 }
@@ -275,7 +275,7 @@ void* tpool_wait_for_result(function_task_t task_operation, void* task_data, tpo
     
     pthread_mutex_lock(&thread_pool->tpool_lock);
 
-    int enqueue_ret = fifo_enqueue((void*)new_task, thread_pool->task_queue_safe);
+    int enqueue_ret = queue_enqueue((void*)new_task, thread_pool->task_queue_safe);
 
     assert(enqueue_ret == 0);
     
