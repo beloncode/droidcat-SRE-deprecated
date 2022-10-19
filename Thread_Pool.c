@@ -21,15 +21,23 @@ struct thread_task
 
 worker_thread_t* tpool_retrieve(pthread_t thread_native_id, tpool_t* thread_pool)
 {
+    pthread_mutex_lock(&thread_pool->workers_lock);
+
+    worker_thread_t* worker_data = NULL;
+
     for (size_t worker_cur = 0; worker_cur < thread_pool->worker_cnt; worker_cur++)
     {
         if (thread_pool->worker_threads[worker_cur].worker_sched == thread_native_id)
         {
-            return &thread_pool->worker_threads[worker_cur];
+            worker_data = &thread_pool->worker_threads[worker_cur];
+
+            break;
         }
     }
 
-    return NULL;
+    pthread_mutex_unlock(&thread_pool->workers_lock);
+
+    return worker_data;
 }
 
 static worker_thread_t* tpool_retrieve_self(tpool_t* thread_pool)
