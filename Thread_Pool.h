@@ -24,6 +24,8 @@ typedef struct worker_thread
 typedef struct tpool 
 {
     size_t worker_cnt;
+    /* Store the count of workers actually running a task */
+    size_t workers_running;
 
     worker_thread_t* worker_threads;
 
@@ -42,12 +44,18 @@ typedef struct tpool
     
 } tpool_t;
 
-int tpool_sync(tpool_t* thread_pool);
+bool tpool_sync(tpool_t* thread_pool);
 
-int tpool_init(int worker_count, tpool_t* thread_pool);
+bool tpool_init(int worker_count, tpool_t* thread_pool);
 
-int tpool_stop(tpool_t* thread_pool);
+bool tpool_stop(tpool_t* thread_pool);
 
-int tpool_finalize(tpool_t* thread_pool);
+bool tpool_finalize(tpool_t* thread_pool);
+
+size_t tpool_workers(const tpool_t* thread_pool);
+
+int tpool_wait_ava(tpool_t* thread_pool);
+
+bool tpool_execute(function_task_t task_operation, void* task_data, tpool_t* thread_pool);
 
 void* tpool_wait_for_result(function_task_t task_operation, void* task_data, tpool_t* thread_pool);

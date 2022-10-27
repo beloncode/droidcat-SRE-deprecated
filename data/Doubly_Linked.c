@@ -3,9 +3,9 @@
 
 #include "Doubly_Linked.h"
 
-doubly_linked_t* doubly_head(int64_t preallocate)
+doubly_linked_t* doubly_create(int64_t preallocate)
 {
-    doubly_linked_t* heap_doubly = (doubly_linked_t*) calloc(1, sizeof(doubly_linked_t));
+    doubly_linked_t* doubly_ctx = (doubly_linked_t*)calloc(1, sizeof(doubly_linked_t));
 
     size_t preallocate_size = preallocate;
 
@@ -14,46 +14,79 @@ doubly_linked_t* doubly_head(int64_t preallocate)
         preallocate_size+=2;
     }
 
-    heap_doubly->node_bank_size = preallocate_size;
-    heap_doubly->node_bank = (doubly_linked_t*)calloc(preallocate_size, sizeof(*heap_doubly));
+    doubly_resize(preallocate, doubly_ctx);
 
-    if (heap_doubly->node_bank == NULL) {}
+    if (doubly_ctx->node_bank == NULL) {}
 
-    return heap_doubly;
+    return doubly_ctx;
 }
 
-int doubly_destroy_head(doubly_linked_t* doubly_head)
+bool doubly_resize(int64_t new_capacity, doubly_linked_t* doubly_ctx)
 {
-    if (doubly_head->node_bank != NULL)
+    if (doubly_ctx->nodes_valid_cnt > new_capacity)
     {
-        free((void*)doubly_head->node_bank);
+        return false;
     }
 
-    free((void*)doubly_head);
+    doubly_ctx->node_bank_size = new_capacity;
+    
+    if (doubly_ctx->node_bank == NULL)
+    {
+        doubly_ctx->node_bank = (doubly_vector_t*)calloc(doubly_ctx->node_bank_size, sizeof(doubly_vector_t));
+        if (doubly_ctx->node_bank == NULL) {}
+        return true;
+    }
 
-    return 0;
+    doubly_vector_t** doubly_bank_ptr = &doubly_ctx->node_bank;
+    
+    assert(*doubly_bank_ptr != NULL);
+    
+    doubly_vector_t* biggest_vector = (doubly_vector_t*)realloc(doubly_ctx->node_bank, doubly_ctx->node_bank_size);
+
+    if (biggest_vector == NULL) 
+    {
+
+    } else
+    {
+        doubly_ctx->node_bank = biggest_vector;
+    }
+
+    return doubly_sync(doubly_ctx);
 }
 
-doubly_linked_t* doubly_invalid_node(doubly_linked_t* doubly_head)
+bool doubly_destroy(doubly_linked_t* doubly_ctx)
 {
-    if (doubly_head->node_bank == NULL)
+    if (doubly_ctx->node_bank != NULL)
+    {
+        free((void*)doubly_ctx->node_bank);
+    }
+
+    free((void*)doubly_ctx);
+
+    return true;
+}
+
+/* Returns an invalid node, whether exist one */
+doubly_vector_t* doubly_invalid_node(doubly_linked_t* doubly_ctx)
+{
+    if (doubly_ctx->node_bank == NULL)
     {
         return NULL;
     }
 
-    for (size_t node_cur = 0; node_cur < doubly_head->node_bank_size; node_cur++)
+    for (size_t node_cur = 0; node_cur < doubly_ctx->node_bank_size; node_cur++)
     {
-        if (doubly_head->node_bank[node_cur].node_valid == 0)
+        if (doubly_ctx->node_bank[node_cur].node_valid == 0)
         {
-            return &doubly_head->node_bank[node_cur];
+            return &doubly_ctx->node_bank[node_cur];
         }
     }
     return NULL;
 }
 
-doubly_linked_t* doubly_reserve(void* user_data, doubly_linked_t* doubly_head)
+doubly_vector_t* doubly_reserve(void* user_data, doubly_linked_t* doubly_ctx)
 {
-    doubly_linked_t* reserved_node = doubly_invalid_node(doubly_head);
+    doubly_vector_t* reserved_node = doubly_invalid_node(doubly_ctx);
     
     if (reserved_node != NULL)
     {
@@ -63,80 +96,101 @@ doubly_linked_t* doubly_reserve(void* user_data, doubly_linked_t* doubly_head)
 
         return reserved_node;
     }
+     
+    /* Reallocates more memory, more specific twice the count of nodes inside the vector */
+    doubly_resize(doubly_ctx->node_bank_size * 2, doubly_ctx);
 
-    doubly_linked_t** doubly_bank_ptr = &doubly_head->node_bank;
-    
-    /* Reallocates more memory, more specif twice the memory */
-    assert(*doubly_bank_ptr != NULL);
-    
-    doubly_head->node_bank_size *= 2;
-
-    doubly_linked_t* new_bank = realloc(doubly_head->node_bank, doubly_head->node_bank_size);
-
-    if (new_bank == NULL) {}
-
-    doubly_head->node_bank = new_bank;
-
-    return doubly_reserve(user_data, doubly_head);
-
+    return doubly_reserve(user_data, doubly_ctx);
 }
 
-static int doubly_insert_at_end(doubly_linked_t* node_link, void* node_info)
+static bool doubly_insert_at_end(doubly_vector_t* node_link, void* node_info)
 {
-    doubly_linked_t* node_item = (doubly_linked_t*)node_info;
+    doubly_vector_t* node_item = (doubly_vector_t*)node_info;
     
     if (node_link->node_next != NULL)
     {
-        return 0;
+        return false;
     }
 
     node_link->node_next = node_item;
 
     node_item->node_prev = node_link;
 
-    return 1;
+    return true;
 }
 
-doubly_linked_t* doubly_retr(size_t node_index, doubly_linked_t* doubly_head)
+static bool doubly_search_id(doubly_vector_t* node_link, void* desired_node)
 {
-    if (node_index >= doubly_head->node_bank_size)
+    /* This node must be fill with the desired ID, so on we can retrieve him and overwrite the pointer content */
+    doubly_vector_t** desired_vector = (doubly_vector_t**)desired_node;    
+
+    if (node_link->doubly_id == (*desired_vector)->doubly_id)
+    {
+        *desired_vector = node_link;
+        return true;
+    }
+
+    return false;
+}
+
+doubly_vector_t* doubly_retrieve_by_id(size_t node_id, doubly_linked_t* doubly_ctx)
+{
+    doubly_vector_t desired_vector_id = { .doubly_id = node_id };
+
+    doubly_vector_t* found_vector_ptr = &desired_vector_id;
+
+    doubly_foreach(doubly_search_id, &found_vector_ptr, doubly_ctx);
+
+    return found_vector_ptr;
+}
+
+doubly_vector_t* doubly_head(doubly_linked_t* doubly_ctx)
+{
+    #define HEAD_NODE_INDEX 0
+    return doubly_retrieve_by_id(HEAD_NODE_INDEX, doubly_ctx);
+}
+
+doubly_vector_t* doubly_retrieve_by_index(size_t node_index, doubly_linked_t* doubly_ctx)
+{
+    if (node_index >= doubly_ctx->node_bank_size)
     {
         return NULL;
     }
-    return &doubly_head->node_bank[node_index];
+    return &doubly_ctx->node_bank[node_index];
 }
 
-doubly_linked_t* doubly_next(doubly_linked_t* node_item)
+doubly_vector_t* doubly_next(doubly_vector_t* node_item)
 {
     return node_item->node_next;
 }
 
-doubly_linked_t* doubly_prev(doubly_linked_t* node_item)
+doubly_vector_t* doubly_prev(doubly_vector_t* node_item)
 {
     return node_item->node_prev;
 }
 
-int doubly_foreach(doubly_foreach_t callback, void* call_data, doubly_linked_t* doubly_head)
+int doubly_foreach(doubly_foreach_t callback, void* call_data, doubly_linked_t* doubly_ctx)
 {
     int nodes_cur = 0;
 
-    int call_ret = callback(doubly_head, call_data);
-
-    if (call_ret) return call_ret;
-
-    for (size_t bank_cur = 0; bank_cur < doubly_head->node_bank_size; bank_cur++)
+    for (size_t bank_cur = 0; bank_cur < doubly_ctx->node_bank_size; bank_cur++)
     {
-        int call_ret = callback(doubly_retr(nodes_cur++, doubly_head), call_data);
+        if (call_data == NULL)
+        {
+            call_data = (void*)(uintptr_t)nodes_cur;
+        }
+        bool call_ret = callback(doubly_retrieve_by_index(nodes_cur++, doubly_ctx), call_data);
 
         if (call_ret) return call_ret;
     }
 
-    return -1;
+    return nodes_cur;
 }
 
-doubly_linked_t* doubly_next_valid(doubly_linked_t* node_item)
+doubly_vector_t* doubly_next_valid(doubly_vector_t* node_item)
 {
     node_item = node_item->node_next;
+    
     while (node_item != NULL)
     {
         if (node_item->node_valid != 0)
@@ -148,92 +202,87 @@ doubly_linked_t* doubly_next_valid(doubly_linked_t* node_item)
     return NULL;
 }
 
-size_t doubly_count(doubly_linked_t* doubly_head)
+size_t doubly_count(doubly_linked_t* doubly_ctx)
 {
-    if (doubly_head == NULL)
+    if (doubly_ctx == NULL)
     {
         return 0;
     }
 
-    doubly_linked_t* real_link = doubly_retr(0, doubly_head);
+    doubly_vector_t* first_link = doubly_head(doubly_ctx);
 
-    /* From implementation perspective, this value should be non NULL */
-    assert(real_link != 0);
+    /* From the implementation perspective, this value should be non NULL */
+    assert(first_link != NULL);
 
-    int valid_nodes = 0;
+    size_t valid_nodes = 0;
 
-    if (doubly_head->node_valid != 0)
-    {
-        valid_nodes++;
-    }
-
-    while ((real_link = doubly_next_valid(real_link))) valid_nodes++;
+    while ((first_link = doubly_next_valid(first_link))) valid_nodes++;
 
     return valid_nodes;
 }
 
-static int doubly_test_element(doubly_linked_t* node_link, void* node_info)
+static bool doubly_test_element(doubly_vector_t* node_link, void* node_info)
 {
-    doubly_linked_t* node_item = (doubly_linked_t*)node_info;
+    doubly_vector_t* node_item = (doubly_vector_t*)node_info;
 
-    if (node_item != node_link) return 0;
+    if (node_item != node_link) return false;
 
-    return 1;
+    return true;
 }
 
-size_t doubly_capacity(const doubly_linked_t* doubly_head)
+size_t doubly_capacity(const doubly_linked_t* doubly_ctx)
 {
-    return doubly_head->node_bank_size;
+    return doubly_ctx->node_bank_size;
 }
 
-int doubly_exist(doubly_linked_t* exist_node, doubly_linked_t* doubly_head)
+bool doubly_exist(doubly_vector_t* exist_node, doubly_linked_t* doubly_ctx)
 {
-    return doubly_foreach(doubly_test_element, exist_node, doubly_head) != -1;
+    return doubly_foreach(doubly_test_element, exist_node, doubly_ctx) != doubly_ctx->node_bank_size;
 }
 
-int doubly_node_clean(doubly_linked_t* node_item)
+bool doubly_node_clean(doubly_vector_t* node_item)
 {
     node_item->user_data = NULL;
     node_item->node_valid = 0;
 
     node_item->node_next = node_item->node_prev = NULL;
 
-    return 0;
+    return true;
 }
 
-static int doubly_clean_element(doubly_linked_t* node_link, void* node_info)
+static bool doubly_clean_element(doubly_vector_t* node_link, void* node_info)
 {
-    return doubly_node_clean(node_link);
+    return doubly_node_clean(node_link) == false;
 }
 
-static int doubly_select_last(doubly_linked_t* node_link, void* user_data)
+static bool doubly_select_last(doubly_vector_t* node_link, void* user_data)
 {
-    doubly_linked_t** last_ptr = (doubly_linked_t**)user_data;
+    doubly_vector_t** last_ptr = (doubly_vector_t**)user_data;
     
-    if (node_link->node_valid != 1) return 0;
+    if (node_link->node_valid != 1) return false;
 
     *last_ptr = node_link;
 
-    if (node_link->node_next == NULL) return 0;
+    if (node_link->node_next == NULL) return false;
 
-    return 1;
+    return true;
 }
 
-doubly_linked_t* doubly_last(doubly_linked_t* head_doubly)
+doubly_vector_t* doubly_last(doubly_linked_t* doubly_ctx)
 {
-    doubly_linked_t* last_node = NULL;
-    doubly_foreach(doubly_select_last, &last_node, head_doubly);
+    doubly_vector_t* last_node = NULL;
+    doubly_foreach(doubly_select_last, &last_node, doubly_ctx);
     return last_node;
 }
 
-int doubly_clean(doubly_linked_t* doubly_head)
+int doubly_clean(doubly_linked_t* doubly_ctx)
 {
-    return doubly_foreach(doubly_clean_element, NULL, doubly_head);
+    return doubly_foreach(doubly_clean_element, NULL, doubly_ctx);
 }
 
-void* doubly_remove(doubly_linked_t* remove_node, doubly_linked_t* doubly_head)
+void* doubly_remove(doubly_vector_t* remove_node, doubly_linked_t* doubly_ctx)
 {
-    if (doubly_exist(remove_node, doubly_head) == 0 && doubly_head != remove_node) return NULL;
+    if (doubly_exist(remove_node, doubly_ctx) == 0) return NULL;
 
     assert(remove_node->node_valid == 1);
 
@@ -251,27 +300,70 @@ void* doubly_remove(doubly_linked_t* remove_node, doubly_linked_t* doubly_head)
 
     doubly_node_clean(remove_node);
 
+    doubly_sync(doubly_ctx);
+
     return node_content;
 }
 
-int doubly_insert(void* user_data, doubly_linked_t* doubly_head)
+static bool doubly_reorder(doubly_vector_t* node_link, void* position)
 {
-    if (doubly_head->node_prev == NULL)
+    static int preserve_index = 0;
+
+    uintptr_t node_index = (uintptr_t)position;
+
+    if (node_index == 0)
     {
-        /* |-<[NODE 0]>-| */
-        /* |------------| */
-
-        doubly_head->node_prev = doubly_head;
-        doubly_head->node_next = doubly_head;
-
-        doubly_head->user_data = user_data;
-        doubly_head->node_valid = 1;
-        return 0;
+        preserve_index = 0;
     }
 
-    doubly_linked_t* element_node = doubly_reserve(user_data, doubly_head);
+    node_link->doubly_id = preserve_index++;
 
-    int each_ret = doubly_foreach(doubly_insert_at_end, (void*)element_node, doubly_head);
+    return false;
+}
+
+bool doubly_sync(doubly_linked_t* doubly_ctx)
+{
+    doubly_foreach(doubly_reorder, NULL, doubly_ctx);
+
+    return true;
+}
+
+int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_linked_t* doubly_ctx)
+{
+    doubly_vector_t* element_node = doubly_reserve(user_data, doubly_ctx);
+
+    int each_ret = 0;
+    
+    switch (at)
+    {
+        default: case DOUBLY_INSERT_END:
+
+        assert(location_opt == 0);
+
+        each_ret = doubly_foreach(doubly_insert_at_end, (void*)element_node, doubly_ctx);
+
+        break;
+        
+        case DOUBLY_INSERT_BEGIN:
+
+        assert(location_opt == 0);
+
+        doubly_vector_t* node_location = doubly_head(doubly_ctx);
+
+        if (node_location == NULL) {}
+
+        element_node->doubly_id = 0;
+
+        node_location->doubly_id = 1;
+
+        element_node->node_next = node_location;
+
+        node_location->node_prev = element_node;
+        
+        break;
+    }
+
+    doubly_sync(doubly_ctx);
 
     return each_ret;
 }

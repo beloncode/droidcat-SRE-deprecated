@@ -8,6 +8,7 @@ data_src = files(
     'data/FIFO_Queue.c'
 )
 cpu_src = files(
+    'cpu/CPU_Time.c',
     'cpu/Hardware_Info.c',
     'cpu/Physical_CPU.c'
 )
@@ -38,5 +39,9 @@ endif
 executable(meson.project_name(), sources: [root_src, data_src, cpu_src], c_args: compiler_args )
 
 tpool_test_src = files('unit/Thread_Pool_TEST.c', 'Thread_Pool.c')
-tpool_test = executable('thread_pool_test', sources: [tpool_test_src, data_src])
+tpool_test = executable('thread_pool_test', sources: [tpool_test_src, data_src, cpu_src])
 test('Unit Thread Pool Test', tpool_test)
+
+doubly_test_src = files('unit/Doubly_Linked_TEST.c')
+doubly_test = executable('doubly_test', sources: [doubly_test_src, data_src])
+test('Doubly Linked List Test', doubly_test)
