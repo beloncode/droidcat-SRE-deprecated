@@ -14,7 +14,7 @@ doubly_linked_t* doubly_create(int64_t preallocate)
         preallocate_size+=2;
     }
 
-    doubly_resize(preallocate, doubly_ctx);
+    doubly_resize(preallocate_size, doubly_ctx);
 
     if (doubly_ctx->node_bank == NULL) {}
 
