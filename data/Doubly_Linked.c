@@ -243,8 +243,8 @@ size_t doubly_count(doubly_linked_t* doubly_ctx)
 
     doubly_vector_t* first_link = doubly_head(doubly_ctx);
 
-    /* From the implementation perspective, this value should be non NULL */
-    assert(first_link != NULL);
+    if (first_link == NULL) return 0;
+
     size_t valid_nodes = 0;
 
     if (first_link->node_valid != 0)
