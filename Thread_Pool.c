@@ -17,10 +17,27 @@ struct thread_task
 
     _Atomic uint_least8_t task_in_wait;
 
-    pthread_cond_t task_condition; 
+    pthread_mutex_t task_mutex;
+    
+    pthread_cond_t task_finished;
 
     function_task_t task_function;
 };
+
+static void tpool_task_init(function_task_t task_operation, void* task_data, struct thread_task* task)
+{
+    task->task_function = task_operation;
+    task->task_data = task_data;
+
+    pthread_mutex_init(&task->task_mutex, NULL);
+    pthread_cond_init(&task->task_finished, NULL);
+}
+
+static void tpool_task_deinit(struct thread_task* task)
+{
+    pthread_mutex_destroy(&task->task_mutex);
+    //pthread_cond_destroy(&task->task_finished);
+}
 
 worker_thread_t* tpool_retrieve(pthread_t thread_native_id, tpool_t* thread_pool)
 {
@@ -37,7 +54,6 @@ worker_thread_t* tpool_retrieve(pthread_t thread_native_id, tpool_t* thread_pool
             break;
         }
     }
-
     pthread_mutex_unlock(&thread_pool->workers_lock);
 
     return worker_data;
@@ -57,64 +73,64 @@ static void* tpool_worker_routine(void* tpool)
     while (1)
     {
         worker_content->can_cancel = 1;
+        
+        pthread_mutex_lock(&thread_pool->tpool_lock);
+        thread_pool->workers_in_waiting++;
+        pthread_mutex_unlock(&thread_pool->tpool_lock);
 
         pthread_mutex_lock(&thread_pool->workers_lock);
+        /* Worker thread is waiting for a broadcast signal */
         pthread_cond_wait(&thread_pool->tpool_sync_tasks, &thread_pool->workers_lock);
+        /* We're received the signal */
+        pthread_mutex_unlock(&thread_pool->workers_lock);
+
+        pthread_mutex_lock(&thread_pool->tpool_lock);
+        thread_pool->workers_in_waiting--;
+        thread_pool->workers_running++;
+        pthread_mutex_unlock(&thread_pool->tpool_lock);
 
         #if TPOOL_USES_DETACHED
         if (thread_pool->pool_begin_destroyed)
         {        
             pthread_mutex_lock(&thread_pool->tpool_lock);
-            
             thread_pool->worker_cnt--;
-            
             pthread_mutex_unlock(&thread_pool->tpool_lock);
-            
-            pthread_mutex_unlock(&thread_pool->workers_lock);
-            
             pthread_exit(NULL);
         }
         #endif
     
         struct thread_task* acquired_task = queue_dequeue(thread_pool->task_queue_safe);
-        
+
         /* From this stage, the worker thread can't be canceled */
         worker_content->can_cancel = 0;
 
-        pthread_mutex_unlock(&thread_pool->workers_lock);
-
         if (acquired_task == NULL) continue;
-        
-        pthread_mutex_lock(&thread_pool->tpool_lock);
 
-        thread_pool->workers_running++;
-
-        pthread_mutex_unlock(&thread_pool->tpool_lock);
+        /* The task mutex must be locked */
+        assert(pthread_mutex_lock(&acquired_task->task_mutex) == 0);
 
         acquired_task->task_result = acquired_task->task_function(acquired_task->task_data);
-
-        if (acquired_task->task_in_wait)
+        if (acquired_task->task_in_wait != 0)
         {
-            /* Someone is waiting to the task begin completed */
             acquired_task->task_completed = 1;
-            pthread_mutex_lock(&thread_pool->workers_lock);
-            
-            pthread_cond_signal(&acquired_task->task_condition);
-            
-            pthread_mutex_unlock(&thread_pool->workers_lock);
+            pthread_cond_signal(&acquired_task->task_finished);
         }
-        else
+        pthread_mutex_unlock(&acquired_task->task_mutex);
+        
+        /* We can now destroy the actual task (whether is needed) */
+        tpool_task_deinit(acquired_task);
+
+        if (acquired_task->task_in_wait == 0)
         {
             memset(acquired_task, 0, sizeof(*acquired_task));
-
             free((void*)acquired_task);
         }
 
+        /* Worker routine has finished the actual task, waiting for another */
         pthread_mutex_lock(&thread_pool->tpool_lock);
-
         thread_pool->workers_running--;
-
         pthread_mutex_unlock(&thread_pool->tpool_lock);
+
     }
 
     return NULL;
@@ -132,11 +148,9 @@ bool tpool_init(int worker_count, tpool_t* thread_pool)
     thread_pool->worker_cnt = worker_count;
 
     pthread_mutex_init(&thread_pool->tpool_lock, NULL);
-
     pthread_mutex_init(&thread_pool->workers_lock, NULL);
 
     pthread_mutex_lock(&thread_pool->tpool_lock);
-
     pthread_cond_init(&thread_pool->tpool_sync_tasks, NULL);
 
     /* Preallocate all needed tasks */
@@ -146,11 +160,7 @@ bool tpool_init(int worker_count, tpool_t* thread_pool)
 
     /* Enable the safe-lock into the queue, every enqueue/dequeue operation will have a valid mutex */ 
     queue_safe_lock(thread_pool->task_queue_safe);
-
-    if (thread_pool->worker_threads == NULL)
-    {
-        
-    }
+    if (thread_pool->worker_threads == NULL) {}
 
     worker_thread_t* worker_cur = thread_pool->worker_threads;
 
@@ -165,15 +175,10 @@ bool tpool_init(int worker_count, tpool_t* thread_pool)
         int posix_result = pthread_create(thread_posix, NULL, tpool_worker_routine, (void*)thread_pool);
 
         if (posix_result != 0) {}
-
         #if TPOOL_USES_DETACHED
-        
-        /* Detach the thread when his as done */
-        
+        /* Detach the thread when his has done */
         int detach_ret = pthread_detach(*thread_posix);
-        
         assert(detach_ret == 0);
-        
         #endif
 
     }
@@ -181,7 +186,6 @@ bool tpool_init(int worker_count, tpool_t* thread_pool)
     thread_pool->thread_pool_run = 1;
 
     pthread_mutex_unlock(&thread_pool->tpool_lock);
-
     tpool_sync(thread_pool);
 
     return true;
@@ -192,9 +196,7 @@ bool tpool_stop(tpool_t* thread_pool)
     pthread_mutex_t* mutex_lock = &thread_pool->tpool_lock;
 
     pthread_mutex_lock(mutex_lock);
-
     thread_pool->thread_pool_run = 0;
-
     pthread_mutex_unlock(mutex_lock);
 
     bool sync_ret = tpool_sync(thread_pool);
@@ -251,9 +253,7 @@ bool tpool_finalize(tpool_t* thread_pool)
     */
     
     #if TPOOL_USES_DETACHED
-    
     thread_pool->pool_begin_destroyed = 1;
-    
     #endif
 
     int cancel_ret = tpool_cancel(thread_pool);
@@ -270,7 +270,6 @@ bool tpool_finalize(tpool_t* thread_pool)
     free((void*)thread_pool->worker_threads);
 
     queue_destroy(thread_pool->task_queue_safe);
-
     return true;
 }
 
@@ -280,45 +279,56 @@ bool tpool_finalize(tpool_t* thread_pool)
 */
 int tpool_wait_ava(tpool_t* thread_pool)
 {
-    while (1)
+    int waiting_var = 0;
+
+    while (waiting_var == 0)
     {
+        pthread_mutex_lock(&thread_pool->workers_lock);
         pthread_mutex_lock(&thread_pool->tpool_lock);
 
-        if (thread_pool->workers_running != thread_pool->worker_cnt)
-        {
-            pthread_mutex_unlock(&thread_pool->tpool_lock);
-            return thread_pool->worker_cnt - thread_pool->workers_running;
-        }
+        waiting_var = thread_pool->worker_cnt - thread_pool->workers_running;
 
+        pthread_mutex_unlock(&thread_pool->workers_lock);
         pthread_mutex_unlock(&thread_pool->tpool_lock);
+        /* Sleep until a task is ready of receive a broadcast signal */
 
         cpu_sleep_nano(TPOOL_SYNC_NANO);
     }
 
-    return 0;
+    return waiting_var;
 }
 
 static bool tpool_add(struct thread_task* task, tpool_t* thread_pool)
 {
-    pthread_mutex_lock(&thread_pool->tpool_lock);
+    assert(tpool_wait_ava(thread_pool) != 0);
 
     int enqueue_ret = queue_enqueue((void*)task, thread_pool->task_queue_safe);
-    
     assert(enqueue_ret != false);
 
-    /* Wait until a worker is available for do our work */
-    
-    pthread_mutex_unlock(&thread_pool->tpool_lock);
+    return true;
+}
 
-    tpool_wait_ava(thread_pool);
+bool tpool_evaluate(struct thread_task* task, tpool_t* thread_pool)
+{
+    /* Notify all workers that there's a task to be done */    
+    /* It's know that there's one or more threads waiting for a task, so on we can notify they */
+    /* The workers_lock must be acquired by tpool_wait_ava */
 
-    /* Notify all workers that there's a task to be done */
+    bool will_wait = task->task_in_wait;
 
     pthread_mutex_lock(&thread_pool->workers_lock);
 
     pthread_cond_broadcast(&thread_pool->tpool_sync_tasks);
-
     pthread_mutex_unlock(&thread_pool->workers_lock);
+
+    /* Signal received from the worker subroutine */
+    if (will_wait != 0)
+    {
+        pthread_mutex_lock(&task->task_mutex);
+        pthread_cond_wait(&task->task_finished, &task->task_mutex);
+        assert(task->task_completed != 0);
+        pthread_mutex_unlock(&task->task_mutex);
+    }
 
     return true;
 }
@@ -330,28 +340,14 @@ void* tpool_wait_for_result(function_task_t task_operation, void* task_data, tpo
         return NULL;
     }
 
-    struct thread_task new_task;
+    struct thread_task new_task_stack = { .task_in_wait = 1 };
+    tpool_task_init(task_operation, task_data, &new_task_stack);
+    tpool_add(&new_task_stack, thread_pool);
 
-    new_task.task_function = task_operation;
-    new_task.task_data = task_data;
-    
-    pthread_cond_init(&new_task.task_condition, NULL);
-
-    new_task.task_in_wait = 1;
-    
-    tpool_add(&new_task, thread_pool);
-    
     /* Wait until some worker finished our task */
-    pthread_mutex_lock(&thread_pool->workers_lock);
+    tpool_evaluate(&new_task_stack, thread_pool);
 
-    pthread_cond_wait(&new_task.task_condition, &thread_pool->workers_lock);
-    
-    pthread_mutex_unlock(&thread_pool->workers_lock);
-
-    pthread_cond_destroy(&new_task.task_condition);
-
-    void* result_data = new_task.task_result;
-
+    void* result_data = new_task_stack.task_result;
     return result_data;
 }
 
@@ -363,13 +359,11 @@ bool tpool_execute(function_task_t task_operation, void* task_data, tpool_t* thr
     }
 
     struct thread_task* new_task = calloc(1, sizeof(struct thread_task));
-
     if (new_task == NULL) {}
-
-    new_task->task_function = task_operation;
-    new_task->task_data = task_data;
+    tpool_task_init(task_operation, task_data, new_task);
 
     bool add_red = tpool_add(new_task, thread_pool);
+    tpool_evaluate(new_task, thread_pool);
 
     /* The task will be freed inside the worker code */
 
@@ -382,12 +376,11 @@ bool tpool_sync(tpool_t* thread_pool)
     while (1)
     {
         pthread_mutex_lock(&thread_pool->tpool_lock);
-        if (queue_empty(thread_pool->task_queue_safe) && thread_pool->workers_running == 0)
+        if (queue_empty(thread_pool->task_queue_safe))
         {
             pthread_mutex_unlock(&thread_pool->tpool_lock);
             break;
         }
-
         pthread_mutex_unlock(&thread_pool->tpool_lock);
 
         cpu_sleep_nano(TPOOL_SYNC_NANO);

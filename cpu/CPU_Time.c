@@ -13,7 +13,7 @@ int cpu_sleep_nano(size_t nanoseconds)
     #if _POSIX_C_SOURCE >= 199309L
 
     const struct timespec sleep_data = {
-        .tv_nsec = (long)nanoseconds
+        .tv_nsec = (long)nanoseconds, .tv_sec = 0
     };
 
     nanosleep(&sleep_data, NULL);

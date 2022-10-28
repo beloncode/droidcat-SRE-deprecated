@@ -27,6 +27,8 @@ typedef struct tpool
     /* Store the count of workers actually running a task */
     size_t workers_running;
 
+    size_t workers_in_waiting;
+
     worker_thread_t* worker_threads;
 
     pthread_mutex_t tpool_lock;

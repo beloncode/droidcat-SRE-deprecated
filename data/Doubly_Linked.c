@@ -243,8 +243,12 @@ size_t doubly_count(doubly_linked_t* doubly_ctx)
 
     /* From the implementation perspective, this value should be non NULL */
     assert(first_link != NULL);
-
     size_t valid_nodes = 0;
+
+    if (first_link->node_valid != 0)
+    {
+        valid_nodes++;
+    }
 
     while ((first_link = doubly_next_valid(first_link))) valid_nodes++;
 
@@ -267,7 +271,7 @@ size_t doubly_capacity(const doubly_linked_t* doubly_ctx)
 
 bool doubly_exist(doubly_vector_t* exist_node, doubly_linked_t* doubly_ctx)
 {
-    return doubly_foreach(doubly_test_element, exist_node, doubly_ctx) != doubly_ctx->node_bank_size;
+    return doubly_foreach(doubly_test_element, exist_node, doubly_ctx) == true;
 }
 
 bool doubly_node_clean(doubly_vector_t* node_item)
