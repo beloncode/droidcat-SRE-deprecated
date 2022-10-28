@@ -171,6 +171,8 @@ doubly_vector_t* doubly_by_id(size_t node_id, doubly_linked_t* doubly_ctx)
 
     doubly_foreach(doubly_search_id, &found_vector_ptr, doubly_ctx);
 
+    /* No one node has been found */
+    if (found_vector_ptr == &desired_vector_id) found_vector_ptr = NULL;
     return found_vector_ptr;
 }
 
