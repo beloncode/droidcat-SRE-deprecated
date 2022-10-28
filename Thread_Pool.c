@@ -5,7 +5,7 @@
 #include "Thread_Pool.h"
 #include "cpu/CPU_Time.h"
 
-#define TPOOL_SYNC_NANO 1e+8 /* 10 miliseconds */
+#define TPOOL_SYNC_NANO 5e+6 /* 5 miliseconds */
 
 struct thread_task
 {
@@ -230,10 +230,8 @@ static int tpool_cancel(tpool_t* thread_pool)
     for (; worker_cur < thread_pool->worker_cnt; worker_cur++)
     {
         pthread_t thread_worker_id = thread_pool->worker_threads[worker_cur].worker_sched;
-
         thread_pool->worker_cnt--;
-
-        /* Ensure that the thread as been canceled */
+        /* Ensure that the thread has been canceled */
         pthread_cancel(thread_worker_id);
     }
 
