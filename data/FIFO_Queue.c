@@ -123,12 +123,10 @@ void* queue_dequeue(FIFO_queue_t* fifo_queue)
     
     doubly_vector_t* node_head = fifo_queue->node_head;
     
-    if (node_head == NULL)
+    if (node_head != NULL)
     {
-        return NULL;
+        node_data = doubly_remove(node_head, fifo_queue->doubly_context);
     }
-
-    node_data = doubly_remove(node_head, fifo_queue->doubly_context);
     
     queue_sync(fifo_queue);
 
