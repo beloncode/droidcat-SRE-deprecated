@@ -351,14 +351,14 @@ static bool doubly_clean_id(doubly_vector_t* node_link, void* user_data)
 bool doubly_sync(doubly_linked_t* doubly_ctx)
 {
     int64_t actual_id;
-    doubly_vector_t* head_node = doubly_head(doubly_ctx);
+    doubly_vector_t* index_node = doubly_head(doubly_ctx);
 
     doubly_foreach(doubly_clean_id, NULL, doubly_ctx);
 
-    for (actual_id = 0; head_node != NULL; actual_id++)
+    for (actual_id = 0; index_node != NULL; actual_id++)
     {
-        head_node->doubly_id = actual_id;
-        head_node = head_node->node_next;
+        index_node->doubly_id = actual_id;
+        index_node = index_node->node_next;
     }
 
     return true;
@@ -366,8 +366,7 @@ bool doubly_sync(doubly_linked_t* doubly_ctx)
 
 int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_linked_t* doubly_ctx)
 {
-    doubly_vector_t* element_node = doubly_reserve(user_data, doubly_ctx);
-
+    doubly_vector_t* selected_node = doubly_reserve(user_data, doubly_ctx);
     int each_ret = 0;
     
     switch (at)
@@ -376,7 +375,12 @@ int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_
 
         assert(location_opt == 0);
 
-        each_ret = doubly_foreach(doubly_insert_at_end, (void*)element_node, doubly_ctx);
+        if (doubly_head(doubly_ctx) == selected_node)
+        {
+            break;
+        }
+
+        each_ret = doubly_foreach(doubly_insert_at_end, (void*)selected_node, doubly_ctx);
 
         break;
         
@@ -388,19 +392,16 @@ int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_
 
         if (node_location == NULL) {}
 
-        if (element_node == node_location)
+        if (selected_node == node_location)
         {
             /* Node already placed at the correct location */
             break;
         }
 
-        element_node->doubly_id = 0;
-
+        selected_node->doubly_id = 0;
         node_location->doubly_id = 1;
-
-        element_node->node_next = node_location;
-
-        node_location->node_prev = element_node;
+        selected_node->node_next = node_location;
+        node_location->node_prev = selected_node;
         
         break;
     }

@@ -306,7 +306,7 @@ static bool tpool_add(struct thread_task* task, tpool_t* thread_pool)
 
     int enqueue_ret = queue_enqueue((void*)task, thread_pool->task_queue_safe);
     
-    assert(enqueue_ret == 0);
+    assert(enqueue_ret != false);
 
     /* Wait until a worker is available for do our work */
     
