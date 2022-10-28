@@ -44,8 +44,8 @@ doubly_vector_t* doubly_invalid_node(doubly_linked_t* doubly_ctx);
 
 doubly_vector_t* doubly_reserve(void* user_data, doubly_linked_t* doubly_ctx);
 
-doubly_vector_t* doubly_retrieve_by_index(size_t node_index, doubly_linked_t* doubly_ctx);
-doubly_vector_t* doubly_retrieve_by_id(size_t node_id, doubly_linked_t* doubly_ctx);
+doubly_vector_t* doubly_by_index(size_t node_index, doubly_linked_t* doubly_ctx);
+doubly_vector_t* doubly_by_id(size_t node_id, doubly_linked_t* doubly_ctx);
 
 void* doubly_remove(doubly_vector_t* remove_node, doubly_linked_t* doubly_ctx);
 int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_linked_t* doubly_ctx);
@@ -56,6 +56,7 @@ doubly_vector_t* doubly_prev(doubly_vector_t* node_item);
 
 doubly_vector_t* doubly_next_valid(doubly_vector_t* node_item);
 
+int doubly_clean(doubly_linked_t* doubly_ctx);
 int doubly_foreach(doubly_foreach_t callback, void* call_data, doubly_linked_t* doubly_ctx);
 
 size_t doubly_count(doubly_linked_t* doubly_ctx);

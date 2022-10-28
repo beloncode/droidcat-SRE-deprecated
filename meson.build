@@ -15,12 +15,12 @@ cpu_src = files(
 
 compiler_args = [
     '-std=c11', 
-    '-fstack-protector',  
+    '-fstack-protector',
     '-ffast-math', 
     '-Wall', 
     '-Werror'
 ]
-
+thread_dep = dependency('threads')
 c_id = meson.get_compiler('c')
 host_compiler = c_id.get_id()
 
@@ -36,12 +36,12 @@ else
     compiler_args += '-O1'
 endif
 
-executable(meson.project_name(), sources: [root_src, data_src, cpu_src], c_args: compiler_args )
+executable(meson.project_name(), sources: [root_src, data_src, cpu_src], c_args: compiler_args, dependencies: thread_dep)
 
 tpool_test_src = files('unit/Thread_Pool_TEST.c', 'Thread_Pool.c')
-tpool_test = executable('thread_pool_test', sources: [tpool_test_src, data_src, cpu_src])
+tpool_test = executable('thread_pool_test', sources: [tpool_test_src, data_src, cpu_src], dependencies: thread_dep)
 test('Unit Thread Pool Test', tpool_test)
 
 doubly_test_src = files('unit/Doubly_Linked_TEST.c')
-doubly_test = executable('doubly_test', sources: [doubly_test_src, data_src])
+doubly_test = executable('doubly_test', sources: [doubly_test_src, data_src], dependencies: thread_dep)
 test('Doubly Linked List Test', doubly_test)

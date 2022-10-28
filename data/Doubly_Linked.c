@@ -21,6 +21,39 @@ doubly_linked_t* doubly_create(int64_t preallocate)
     return doubly_ctx;
 }
 
+static bool doubly_copy(doubly_vector_t* dest, doubly_vector_t* head_node, int64_t max_size)
+{
+    assert(head_node->doubly_id == 0);
+
+    doubly_vector_t* src = head_node;
+
+    if (src == NULL || doubly_is_valid(src) == false)
+    {
+        return false;
+    }
+
+    doubly_vector_t* node_prev = NULL;
+    static int node_id;
+
+    for (node_id = 0; max_size != 0 && src != NULL; max_size--)
+    {
+        dest->doubly_id = node_id++;
+        dest->node_valid = src->node_valid;
+        dest->user_data = src->user_data;
+        /* Making the linking between the thw nodes */
+        dest->node_prev = node_prev;
+        if (dest->node_prev != NULL)
+        {
+            dest->node_prev->node_next = dest;
+        }
+
+        src = doubly_next(src);
+        node_prev = dest++;
+    }
+
+    return true;
+}
+
 bool doubly_resize(int64_t new_capacity, doubly_linked_t* doubly_ctx)
 {
     if (doubly_ctx->nodes_valid_cnt > new_capacity)
@@ -36,21 +69,18 @@ bool doubly_resize(int64_t new_capacity, doubly_linked_t* doubly_ctx)
         if (doubly_ctx->node_bank == NULL) {}
         return true;
     }
-
-    doubly_vector_t** doubly_bank_ptr = &doubly_ctx->node_bank;
+        
+    /* Reallocates a new buffer and copies all valid elements into the new buffer field */
+    doubly_vector_t* new_vector = (doubly_vector_t*)calloc(doubly_ctx->node_bank_size, sizeof(doubly_vector_t));
     
-    assert(*doubly_bank_ptr != NULL);
+    if (new_vector == NULL) {}
     
-    doubly_vector_t* biggest_vector = (doubly_vector_t*)realloc(doubly_ctx->node_bank, doubly_ctx->node_bank_size);
+    assert(doubly_copy(new_vector, doubly_head(doubly_ctx), new_capacity) != false);
+    
+    free((void*)doubly_ctx->node_bank);
 
-    if (biggest_vector == NULL) 
-    {
-
-    } else
-    {
-        doubly_ctx->node_bank = biggest_vector;
-    }
-
+    doubly_ctx->node_bank = new_vector;
+    
     return doubly_sync(doubly_ctx);
 }
 
@@ -124,7 +154,7 @@ static bool doubly_search_id(doubly_vector_t* node_link, void* desired_node)
     /* This node must be fill with the desired ID, so on we can retrieve him and overwrite the pointer content */
     doubly_vector_t** desired_vector = (doubly_vector_t**)desired_node;    
 
-    if (node_link->doubly_id == (*desired_vector)->doubly_id)
+    if (node_link->doubly_id == (*desired_vector)->doubly_id && node_link->node_valid)
     {
         *desired_vector = node_link;
         return true;
@@ -133,7 +163,7 @@ static bool doubly_search_id(doubly_vector_t* node_link, void* desired_node)
     return false;
 }
 
-doubly_vector_t* doubly_retrieve_by_id(size_t node_id, doubly_linked_t* doubly_ctx)
+doubly_vector_t* doubly_by_id(size_t node_id, doubly_linked_t* doubly_ctx)
 {
     doubly_vector_t desired_vector_id = { .doubly_id = node_id };
 
@@ -147,10 +177,10 @@ doubly_vector_t* doubly_retrieve_by_id(size_t node_id, doubly_linked_t* doubly_c
 doubly_vector_t* doubly_head(doubly_linked_t* doubly_ctx)
 {
     #define HEAD_NODE_INDEX 0
-    return doubly_retrieve_by_id(HEAD_NODE_INDEX, doubly_ctx);
+    return doubly_by_id(HEAD_NODE_INDEX, doubly_ctx);
 }
 
-doubly_vector_t* doubly_retrieve_by_index(size_t node_index, doubly_linked_t* doubly_ctx)
+doubly_vector_t* doubly_by_index(size_t node_index, doubly_linked_t* doubly_ctx)
 {
     if (node_index >= doubly_ctx->node_bank_size)
     {
@@ -171,15 +201,15 @@ doubly_vector_t* doubly_prev(doubly_vector_t* node_item)
 
 int doubly_foreach(doubly_foreach_t callback, void* call_data, doubly_linked_t* doubly_ctx)
 {
-    int nodes_cur = 0;
+    int nodes_cur;
 
-    for (size_t bank_cur = 0; bank_cur < doubly_ctx->node_bank_size; bank_cur++)
+    for (nodes_cur = 0; nodes_cur < doubly_ctx->node_bank_size; nodes_cur++)
     {
         if (call_data == NULL)
         {
             call_data = (void*)(uintptr_t)nodes_cur;
         }
-        bool call_ret = callback(doubly_retrieve_by_index(nodes_cur++, doubly_ctx), call_data);
+        bool call_ret = callback(doubly_by_index(nodes_cur, doubly_ctx), call_data);
 
         if (call_ret) return call_ret;
     }
@@ -289,6 +319,11 @@ void* doubly_remove(doubly_vector_t* remove_node, doubly_linked_t* doubly_ctx)
     if (remove_node->node_next != NULL)
     {
         remove_node->node_next->node_prev = remove_node->node_prev;
+        /* We are removing the head node, then, passing the ownership id of the head for the next element node */
+        if (doubly_head(doubly_ctx) == remove_node)
+        {
+            remove_node->node_next->doubly_id = remove_node->doubly_id;
+        }
     }
 
     if (remove_node->node_prev != NULL)
@@ -300,30 +335,31 @@ void* doubly_remove(doubly_vector_t* remove_node, doubly_linked_t* doubly_ctx)
 
     doubly_node_clean(remove_node);
 
+    doubly_ctx->nodes_valid_cnt--;
+
     doubly_sync(doubly_ctx);
 
     return node_content;
 }
 
-static bool doubly_reorder(doubly_vector_t* node_link, void* position)
+static bool doubly_clean_id(doubly_vector_t* node_link, void* user_data)
 {
-    static int preserve_index = 0;
-
-    uintptr_t node_index = (uintptr_t)position;
-
-    if (node_index == 0)
-    {
-        preserve_index = 0;
-    }
-
-    node_link->doubly_id = preserve_index++;
-
+    node_link->doubly_id = 0;
     return false;
 }
 
 bool doubly_sync(doubly_linked_t* doubly_ctx)
 {
-    doubly_foreach(doubly_reorder, NULL, doubly_ctx);
+    int64_t actual_id;
+    doubly_vector_t* head_node = doubly_head(doubly_ctx);
+
+    doubly_foreach(doubly_clean_id, NULL, doubly_ctx);
+
+    for (actual_id = 0; head_node != NULL; actual_id++)
+    {
+        head_node->doubly_id = actual_id;
+        head_node = head_node->node_next;
+    }
 
     return true;
 }
@@ -352,6 +388,12 @@ int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_
 
         if (node_location == NULL) {}
 
+        if (element_node == node_location)
+        {
+            /* Node already placed at the correct location */
+            break;
+        }
+
         element_node->doubly_id = 0;
 
         node_location->doubly_id = 1;
@@ -363,8 +405,7 @@ int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_
         break;
     }
 
+    doubly_ctx->nodes_valid_cnt++;
     doubly_sync(doubly_ctx);
-
     return each_ret;
 }
-
