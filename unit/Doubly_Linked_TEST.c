@@ -5,7 +5,7 @@
 
 int main()
 {
-    /* Wether no one preallocate value as specifies, 
+    /* If no one preallocate value as specifies,
      * the doubly linked system must allocate 2 nodes by default 
     */
     doubly_linked_t* linked_new = doubly_create(0);

@@ -30,7 +30,7 @@ int main()
 {
     /* Inside the unit test, we decide to create the pool at the stack
      * this must be discouraged because the thread pool needs to be independent 
-     * from the main thread!
+     * of the main thread!
     */
 
     tpool_t stack_pool;

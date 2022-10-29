@@ -29,9 +29,9 @@ if get_option('enable_debug')
     compiler_args += '-fno-omit-frame-pointer'
     compiler_args += '-ggdb'
     compiler_args += '-O1'
-    if host_compiler == 'clang'
-        compiler_args += '-fsanitize=address'
-    endif
+    #if host_compiler == 'clang'
+    #    compiler_args += '-fsanitize=address'
+    #endif
 else
     compiler_args += '-O1'
 endif

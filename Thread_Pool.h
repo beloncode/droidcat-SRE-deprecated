@@ -9,8 +9,8 @@ typedef void* (*function_task_t)(void* task_data);
 
 typedef struct worker_thread
 {
-    /* Worker thread id, used for maintainence and identification purposes 
-     * All worker thread will got your own identifier and will be handler his own
+    /* Worker thread id, used for maintenance and identification purposes
+     * All worker thread will get your own identifier and will be handler his own
      * resources!
     */
     uint32_t worker_id;
@@ -43,9 +43,7 @@ typedef struct tpool
     #endif
 
     struct timespec* __wait;
-
     FIFO_queue_t* task_queue_safe;
-    
 } tpool_t;
 
 bool tpool_sync(tpool_t* thread_pool);

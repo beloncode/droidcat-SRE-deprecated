@@ -165,7 +165,8 @@ static bool doubly_search_id(doubly_vector_t* node_link, void* desired_node)
 
 doubly_vector_t* doubly_by_id(size_t node_id, doubly_linked_t* doubly_ctx)
 {
-    doubly_vector_t desired_vector_id = { .doubly_id = node_id };
+    static doubly_vector_t desired_vector_id = {};
+    desired_vector_id.doubly_id = node_id;
 
     doubly_vector_t* found_vector_ptr = &desired_vector_id;
 
@@ -288,6 +289,7 @@ bool doubly_node_clean(doubly_vector_t* node_item)
 
 static bool doubly_clean_element(doubly_vector_t* node_link, void* node_info)
 {
+    (void)node_info;
     return doubly_node_clean(node_link) == false;
 }
 
@@ -350,6 +352,7 @@ void* doubly_remove(doubly_vector_t* remove_node, doubly_linked_t* doubly_ctx)
 
 static bool doubly_clean_id(doubly_vector_t* node_link, void* user_data)
 {
+    (void)user_data;
     node_link->doubly_id = 0;
     return false;
 }

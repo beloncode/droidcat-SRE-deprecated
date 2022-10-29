@@ -50,7 +50,7 @@ doubly_vector_t* doubly_by_id(size_t node_id, doubly_linked_t* doubly_ctx);
 void* doubly_remove(doubly_vector_t* remove_node, doubly_linked_t* doubly_ctx);
 int doubly_insert(void* user_data, doubly_insert_e at, int location_opt, doubly_linked_t* doubly_ctx);
 
-/* Gets the next or the previous node from an node */
+/* Gets the next or the previous node from a node */
 doubly_vector_t* doubly_next(doubly_vector_t* node_item);
 doubly_vector_t* doubly_prev(doubly_vector_t* node_item);
 
@@ -69,7 +69,7 @@ bool doubly_node_clean(doubly_vector_t* node_item);
 doubly_vector_t* doubly_last(doubly_linked_t* doubly_ctx);
 doubly_vector_t* doubly_head(doubly_linked_t* doubly_ctx);
 
-/* Resizes the queue capacity, how more biggest the inital value be, more performance will have,
+/* Resizes the queue capacity, how biggest the initial value be, more performance will have,
  * but more memory is needed!
 */
 bool doubly_resize(int64_t new_capacity, doubly_linked_t* doubly_ctx);

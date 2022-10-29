@@ -5,7 +5,7 @@
 #include "Thread_Pool.h"
 #include "cpu/CPU_Time.h"
 
-#define TPOOL_SYNC_NANO 5e+6 /* 5 miliseconds */
+#define TPOOL_SYNC_NANO 5e+6 /* 5 milliseconds */
 
 struct thread_task
 {
@@ -114,7 +114,7 @@ static void* tpool_worker_routine(void* tpool)
             #if TPOOL_USES_DETACHED
             continue;
             #else
-            return NULL;
+            break;
             #endif
         }
 
@@ -159,7 +159,9 @@ static void* tpool_worker_routine(void* tpool)
         pthread_mutex_unlock(&thread_pool->tpool_lock);
     }
 
+#if TPOOL_USES_DETACHED == 0
     return NULL;
+#endif
 }
 
 /* Will lock the caller thread for wait until the task 'task_operation' is finished 
@@ -248,7 +250,7 @@ size_t tpool_running_now(const tpool_t* thread_pool)
 static int tpool_cancel(tpool_t* thread_pool)
 {
     int worker_cur;
-    int workers_total = tpool_workers(thread_pool);
+    int workers_total;
 
     #if TPOOL_USES_DETACHED
     
@@ -269,6 +271,7 @@ static int tpool_cancel(tpool_t* thread_pool)
         thread_pool->worker_cnt--;
     }
     pthread_mutex_unlock(&thread_pool->tpool_lock);
+    workers_total = tpool_workers(thread_pool);
     
     #endif
     
@@ -303,8 +306,8 @@ bool tpool_finalize(tpool_t* thread_pool)
     return true;
 }
 
-/* Checks and wait until a worker is done for proccess our task
- * this function should returns the count of workers available in the idle state
+/* Checks and wait until a worker is done for process our task
+ * this function should return the count of workers available in the idle state
  * and the thread_pool lock must be locked after and before this function call
 */
 int tpool_wait_ava(tpool_t* thread_pool)
@@ -396,7 +399,7 @@ bool tpool_execute(function_task_t task_operation, void* task_data, tpool_t* thr
     return add_red;
 }
 
-/* Wait for all tasks begin finished */
+/* Wait for all tasks being finished */
 bool tpool_sync(tpool_t* thread_pool)
 {
     bool sync_done = false;

@@ -8,7 +8,7 @@ typedef struct droidcat_ctx
 {
     /* The main thread pool used during all droidcat process
      * alive time.
-     * Some specific threads will have his affinity changes and will be used for an specific types of task!
+     * Some specific threads will have his affinity changes and will be used for a specific types of task!
     */
     tpool_t* main_thread_pool;
 
