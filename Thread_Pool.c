@@ -133,7 +133,7 @@ static void* tpool_worker_routine(void* tpool)
         /* The task mutex must be locked */
         void* acquired_result = acquired_task->task_function(acquired_task->task_data);
         
-        /* This copy is node here, because after unlock, the task may be destroyed if him reside on the stack,
+        /* This copy is done here, because after unlock, the task may be destroyed if its resides on the stack,
          * the ownership will be transferred to the thread how created this task!
         */
         bool will_wait = acquired_task->task_in_wait;
@@ -322,7 +322,7 @@ int tpool_wait_ava(tpool_t* thread_pool)
         waiting_var = thread_pool->worker_cnt - thread_pool->workers_running;
         pthread_mutex_unlock(&thread_pool->tpool_lock);
         pthread_mutex_unlock(&thread_pool->workers_lock);
-        /* Sleep until a task is ready of receive a broadcast signal */
+        /* Sleep until a task is ready for receive a broadcast signal */
 
         cpu_sleep_nano(TPOOL_SYNC_NANO);
     }
