@@ -65,7 +65,7 @@ static worker_thread_t* tpool_retrieve_self(tpool_t* thread_pool)
     return tpool_retrieve(pthread_self(), thread_pool);
 }
 
-static const struct timespec __wait_time_limit = { .tv_nsec = TPOOL_SYNC_NANO, .tv_sec = 0 };
+static struct timespec __wait_time_limit = { .tv_nsec = TPOOL_SYNC_NANO, .tv_sec = 0 };
 
 static void __force_worker_execution(tpool_t* thread_pool)
 {
@@ -101,11 +101,22 @@ static void* tpool_worker_routine(void* tpool)
         #endif
         pthread_mutex_unlock(&thread_pool->tpool_lock);
 
-        pthread_mutex_lock(&thread_pool->workers_lock);
         /* Worker thread is waiting for a broadcast signal */
-        pthread_cond_timedwait(&thread_pool->tpool_sync_tasks, &thread_pool->workers_lock, &__wait_time_limit);
-        /* We're received the signal */
-        pthread_mutex_unlock(&thread_pool->workers_lock);
+        if (thread_pool->__wait != NULL)
+        {
+            pthread_mutex_lock(&thread_pool->workers_lock);
+            /* We're received the signal */
+            pthread_cond_timedwait(&thread_pool->tpool_sync_tasks, &thread_pool->workers_lock, thread_pool->__wait);
+            pthread_mutex_unlock(&thread_pool->workers_lock);
+        }
+        else
+        {
+            #if TPOOL_USES_DETACHED
+            continue;
+            #else
+            return NULL;
+            #endif
+        }
 
         pthread_mutex_lock(&thread_pool->tpool_lock);
         thread_pool->workers_in_waiting--;
@@ -157,6 +168,8 @@ static void* tpool_worker_routine(void* tpool)
 bool tpool_init(int worker_count, tpool_t* thread_pool) 
 {
     memset(thread_pool, 0, sizeof(*thread_pool));
+    
+    thread_pool->__wait = &__wait_time_limit;
     
     thread_pool->worker_threads = calloc((int8_t)worker_count, sizeof(*thread_pool->worker_threads));
 
@@ -211,6 +224,9 @@ bool tpool_stop(tpool_t* thread_pool)
 
     pthread_mutex_lock(mutex_lock);
     thread_pool->thread_pool_run = 0;
+    
+    thread_pool->__wait = NULL;
+
     pthread_mutex_unlock(mutex_lock);
 
     bool sync_ret = tpool_sync(thread_pool);
@@ -231,30 +247,31 @@ size_t tpool_running_now(const tpool_t* thread_pool)
 /* Returns the number of canceled worker threads */
 static int tpool_cancel(tpool_t* thread_pool)
 {
-    #if TPOOL_USES_DETACHED
+    int worker_cur;
+    int workers_total = tpool_workers(thread_pool);
 
+    #if TPOOL_USES_DETACHED
+    
     while (tpool_workers(thread_pool) != 0)
     {
         __force_worker_execution(thread_pool);
     }
-
-    #endif
-
-    int workers_total = tpool_workers(thread_pool);
-    int worker_cur;
-
+    workers_total = worker_cur = 0;
+    
+    #else    
     pthread_mutex_lock(&thread_pool->tpool_lock);
 
     for (worker_cur = 0; worker_cur < thread_pool->worker_cnt; worker_cur++)
     {
         pthread_t thread_worker_id = thread_pool->worker_threads[worker_cur].worker_sched;
-        thread_pool->worker_cnt--;
         /* Ensure that the thread has been canceled */
         pthread_cancel(thread_worker_id);
+        thread_pool->worker_cnt--;
     }
-
     pthread_mutex_unlock(&thread_pool->tpool_lock);
-
+    
+    #endif
+    
     return workers_total - worker_cur;
 }
 

@@ -4,7 +4,7 @@
 
 #include "Thread_Pool.h"
 
-#define WORKERS_COUNT 2
+#define WORKERS_COUNT 8
 
 #define EXPECTED_X_VALUE 50
 

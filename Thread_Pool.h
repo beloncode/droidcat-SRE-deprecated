@@ -42,6 +42,8 @@ typedef struct tpool
     _Atomic uint_least8_t pool_begin_destroyed;
     #endif
 
+    struct timespec* __wait;
+
     FIFO_queue_t* task_queue_safe;
     
 } tpool_t;
