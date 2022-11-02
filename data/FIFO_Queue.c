@@ -121,7 +121,7 @@ void* queue_dequeue(FIFO_queue_t* fifo_queue)
     
     void* node_data = NULL;
     
-    doubly_vector_t* node_head = fifo_queue->node_head;
+    doubly_node_t* node_head = fifo_queue->node_head;
     
     if (node_head != NULL)
     {
@@ -147,7 +147,7 @@ void* queue_dequeue_inverse(FIFO_queue_t* fifo_queue)
     }
     void* node_data = NULL;
 
-    doubly_vector_t* node_tail = fifo_queue->node_tail;
+    doubly_node_t* node_tail = fifo_queue->node_tail;
 
     if (node_tail == NULL)
     {

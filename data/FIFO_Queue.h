@@ -13,9 +13,9 @@ typedef struct FIFO_queue
 {
     doubly_linked_t* doubly_context;
 
-    doubly_vector_t* node_head;
+    doubly_node_t* node_head;
 
-    doubly_vector_t* node_tail;
+    doubly_node_t* node_tail;
 
     _Atomic size_t queue_length;
 
